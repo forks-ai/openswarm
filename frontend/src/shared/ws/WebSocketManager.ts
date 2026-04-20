@@ -129,17 +129,16 @@ class WebSocketManager {
         if (data.status === 'running' && session_id) {
           store.dispatch(trackAgentNotification(session_id));
         }
-        // Auto-remove browsers spawned by this agent when it reaches a
-        // terminal state on its own. agent:closed only fires when the user
-        // clicks X to close the session, so without this hook the browser
-        // cards would linger after natural completion or error. 'stopped'
-        // is intentionally skipped to preserve the "inspect after manual
-        // stop" affordance — matching the agent:closed branch below.
-        if (session_id && (data.status === 'completed' || data.status === 'error')) {
-          const browserCards = store.getState().dashboardLayout.browserCards;
-          for (const card of Object.values(browserCards)) {
-            if (card.spawned_by === session_id) {
-              store.dispatch(removeBrowserCard(card.browser_id));
+        // Per-sub-agent close via browser_id; skip user-created cards (no spawned_by).
+        if (
+          (data.status === 'completed' || data.status === 'error') &&
+          data.session?.mode === 'browser-agent'
+        ) {
+          const browserId = data.session.browser_id;
+          if (browserId) {
+            const card = store.getState().dashboardLayout.browserCards[browserId];
+            if (card && card.spawned_by) {
+              store.dispatch(removeBrowserCard(browserId));
             }
           }
         }

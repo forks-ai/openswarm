@@ -20,12 +20,21 @@ export function claudeToOpenAIRequest(model, body, stream) {
     result.temperature = body.temperature;
   }
 
-  // System message
+  // System message — strip the claude-agent-sdk's "You are Claude Code..."
+  // identity sentence before forwarding to non-Anthropic providers. Without
+  // this, Gemini/Codex/etc receive the Claude Code preset's first line as
+  // gospel and dutifully introduce themselves as Claude. The rest of the
+  // preset (tool conventions, scaffolding) stays intact.
   if (body.system) {
-    const systemContent = Array.isArray(body.system)
+    let systemContent = Array.isArray(body.system)
       ? body.system.map(s => s.text || "").join("\n")
       : body.system;
-    
+
+    systemContent = systemContent.replace(
+      /You are Claude Code, Anthropic's official CLI for Claude\.\s*/,
+      ""
+    );
+
     if (systemContent) {
       result.messages.push({
         role: "system",

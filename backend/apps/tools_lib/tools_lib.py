@@ -716,8 +716,38 @@ async def _discover_mcp_tools_sse(url: str, headers: dict | None = None) -> list
         raise HTTPException(status_code=502, detail=f"SSE discovery failed: {first}") from first
 
 
-async def _discover_mcp_tools_stdio(command: str, args: list[str] | None = None, env: dict | None = None) -> list[dict]:
-    """Spawn a stdio MCP server process and call tools/list via JSON-RPC over stdin/stdout."""
+_NPX_CACHE_RE = re.compile(r"_npx[/\\]([0-9a-f]{8,})[/\\]")
+
+
+def _try_heal_npx_cache(stderr: str) -> str | None:
+    """On `ERR_MODULE_NOT_FOUND` pointing into `~/.npm/_npx/<hash>/`, wipe that one dir.
+
+    Why: interrupted npx installs leave a `package-lock.json` in the cache dir so
+    subsequent spawns reuse a partially-extracted node_modules tree, which dies at
+    import time. Scoped strictly to the extracted hash subdir — never touches
+    anything outside `~/.npm/_npx/`.
+    """
+    if "ERR_MODULE_NOT_FOUND" not in stderr:
+        return None
+    m = _NPX_CACHE_RE.search(stderr)
+    if not m:
+        return None
+    hash_ = m.group(1)
+    cache_dir = os.path.join(os.path.expanduser("~"), ".npm", "_npx", hash_)
+    if not os.path.isdir(cache_dir):
+        return None
+    logger.warning("Corrupted npx cache detected at %s; wiping and letting caller retry", cache_dir)
+    shutil.rmtree(cache_dir, ignore_errors=True)
+    return hash_
+
+
+async def _discover_mcp_tools_stdio(command: str, args: list[str] | None = None, env: dict | None = None, _attempt: int = 0) -> list[dict]:
+    """Spawn a stdio MCP server process and call tools/list via JSON-RPC over stdin/stdout.
+
+    On the first attempt, a failure that looks like corrupted npx cache
+    (`ERR_MODULE_NOT_FOUND` pointing into `~/.npm/_npx/<hash>/`) triggers one
+    auto-heal + retry. No heal on `_attempt >= 1`.
+    """
     cmd_path = _resolve_command(command)
     if not cmd_path:
         raise HTTPException(status_code=400, detail=f"Command '{command}' not found on PATH or common install locations")
@@ -782,7 +812,9 @@ async def _discover_mcp_tools_stdio(command: str, args: list[str] | None = None,
         tools_list = data.get("result", {}).get("tools", [])
         return [{"name": t.get("name", ""), "description": t.get("description", ""), "inputSchema": t.get("inputSchema")} for t in tools_list]
 
-    except HTTPException:
+    except HTTPException as e:
+        if _attempt == 0 and _try_heal_npx_cache(str(e.detail) if e.detail is not None else ""):
+            return await _discover_mcp_tools_stdio(command, args, env, _attempt=1)
         raise
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="MCP stdio server timed out during discovery")
