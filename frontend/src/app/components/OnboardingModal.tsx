@@ -135,8 +135,32 @@ const OnboardingModal: React.FC = () => {
   const [referralSourceOther, setReferralSourceOther] = useState<string>('');
   const [connecting, setConnecting] = useState<string | null>(null);
   const [nineRouterReady, setNineRouterReady] = useState<boolean | null>(null);
+  // Providers the backend says are already authenticated. Used to show a
+  // "Connected" state on rows where the user has already linked the account.
+  // Without this the row reverts to "Connect ->" after a 30s OAuth timeout
+  // even when the backend actually completed the link.
+  const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
   const pollTimerRef = useRef<any>(null);
   const msgHandlerRef = useRef<any>(null);
+
+  // Poll subscription status while the connect step is showing so the row
+  // labels reflect any post-timeout backend success and any prior connections.
+  useEffect(() => {
+    if (step !== 'connect' || !open) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/agents/subscriptions/status`);
+        const d = await r.json();
+        if (cancelled) return;
+        const conns = d?.providers?.connections || [];
+        setConnectedProviders(new Set(conns.filter((p: any) => p.isActive).map((p: any) => p.provider)));
+      } catch {}
+    };
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [step, open]);
 
   // Poll for 9Router readiness (it may still be starting when onboarding shows)
   useEffect(() => {
