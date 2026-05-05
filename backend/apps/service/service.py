@@ -92,13 +92,13 @@ async def _heartbeat_loop():
                             props[f"cost_model_{safe_name}"] = model_data.get("cost", 0)
             except Exception:
                 pass
-            svc.record("app.heartbeat", props)
+            svc.submit("state", props)
             if "nine_router_total_cost" in props:
-                svc.record("cost.delta", {
-                    "cost_delta_usd": cost_delta,
-                    "prompt_tokens_delta": int(prompt_delta),
-                    "completion_tokens_delta": int(completion_delta),
-                    "requests_delta": int(requests_delta),
+                svc.submit("state", {
+                    "d_cost": cost_delta,
+                    "d_prompt": int(prompt_delta),
+                    "d_completion": int(completion_delta),
+                    "d_requests": int(requests_delta),
                 })
         except Exception:
             pass
@@ -146,7 +146,7 @@ async def service_lifespan():
         for cp in getattr(settings, "custom_providers", []):
             providers.append(cp.name)
 
-        svc.record("app.opened", {
+        svc.submit("state", {
             "os": platform.system(),
             "platform": platform.platform(),
             "provider_count": len(providers),
@@ -181,7 +181,7 @@ async def service_lifespan():
         if is_paying and getattr(settings, "openswarm_subscription_expires", None):
             id_props["subscription_expires"] = settings.openswarm_subscription_expires
 
-        svc.identify(id_props)
+        svc.submit("state", {"identity": id_props})
     except Exception as e:
         logger.debug(f"Service startup event failed (non-critical): {e}")
 

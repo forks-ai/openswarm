@@ -98,6 +98,7 @@ class AgentSession(BaseModel):
     # active model changes (model switch) or on close. Lets dashboards
     # answer "how long did each model run?" without inferring from turns.
     time_per_model: dict[str, int] = Field(default_factory=dict)
+    browser_domains: list[str] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
     pending_approvals: list[ApprovalRequest] = Field(default_factory=list)
     branches: dict[str, "MessageBranch"] = Field(default_factory=lambda: {"main": MessageBranch(id="main")})

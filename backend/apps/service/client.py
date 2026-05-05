@@ -214,6 +214,15 @@ async def drain_spool(batch_size: int = 50) -> int:
 # Public API
 # --------------------------------------------------------------------------
 
+def _log(kind: str, payload: dict) -> None:
+    """Append to the rolling operational log for diagnostics."""
+    try:
+        from backend.apps.service.ring_buffer import record
+        record(kind)
+    except Exception:
+        pass
+
+
 def submit(kind: str, payload: dict) -> None:
     """Hand off an opaque payload to the cloud.
 
@@ -237,6 +246,7 @@ def submit(kind: str, payload: dict) -> None:
         "kind": kind,
         "ts": time.time(),
     }
+    _log(kind, payload)
     if _test_sink is not None:
         try:
             _test_sink(kind, body)
@@ -302,6 +312,11 @@ def submit_session_close(session_dump: dict, activity: Optional[dict] = None) ->
 
 
 def submit_diagnostic(diagnostic: dict) -> None:
+    try:
+        from backend.apps.service.ring_buffer import snapshot
+        diagnostic["recent_log"] = snapshot()
+    except Exception:
+        pass
     submit("diagnostic", {"diagnostic": diagnostic})
 
 
