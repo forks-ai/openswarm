@@ -4,6 +4,13 @@ import { useElementSelection } from '@/app/components/ElementSelectionContext';
 import { useIframeElementSelector } from './useIframeElementSelector';
 import { getAuthToken, ensureAuthToken } from '@/shared/config';
 
+// We render apps in a <webview> when running inside the Electron shell so
+// they escape iframe restrictions (popups, mic/camera, WebAuthn,
+// cross-origin fetch with cookies). Outside Electron — webpack-dev-server
+// in the browser, jest, etc. — `<webview>` is a no-op element, so we fall
+// back to the iframe path. Same detection BrowserCard uses.
+const isElectron = navigator.userAgent.includes('Electron');
+
 export interface ViewPreviewHandle {
   reload: () => void;
 }
@@ -53,6 +60,7 @@ const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
   style,
 }, ref) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const webviewRef = useRef<any>(null);
   const ctx = useElementSelection();
   const [reloadKey, setReloadKey] = useState(0);
   // Track auth token in state so the iframe URL is rebuilt the moment the
@@ -69,14 +77,6 @@ const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
     return () => { cancelled = true; };
   }, [authToken]);
 
-  useEffect(() => {
-    if (ctx && iframeRef.current) {
-      ctx.iframeRef.current = iframeRef.current;
-    }
-  }, [ctx, frontendCode, serveUrl]);
-
-  useIframeElementSelector(iframeRef);
-
   const iframeSrc = useMemo(() => {
     if (!serveUrl) return undefined;
     // Don't ship a tokenless URL — the backend auth middleware would 401 and
@@ -92,9 +92,41 @@ const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
     return buildSrcdoc(frontendCode, inputData, backendResult);
   }, [serveUrl, frontendCode, inputData, backendResult]);
 
+  // Use webview when (a) we're in Electron and (b) we have a real serveUrl
+  // to navigate to. Inline srcdoc still goes through the iframe path: a
+  // webview's only inline option is `data:text/html,...` which the Electron
+  // sandbox treats as a null/opaque origin, breaking localStorage and
+  // same-origin fetch for the rendered app.
+  const useWebview = isElectron && !!iframeSrc;
+
+  // Wire the iframe element into the element-selection context only when
+  // we're actually rendering an iframe. A <webview>'s document lives in
+  // a separate renderer process — its contentDocument is null from the
+  // host page, so useIframeElementSelector's overlay/listener injection
+  // can't reach it. Element selection on in-Electron previews is a known
+  // regression of the webview swap.
+  useEffect(() => {
+    if (useWebview) return;
+    if (ctx && iframeRef.current) {
+      ctx.iframeRef.current = iframeRef.current;
+    }
+  }, [ctx, frontendCode, serveUrl, useWebview]);
+
+  // Selector hook keys off iframeRef.current. When webview is mounted
+  // instead, no <iframe> is rendered, so iframeRef.current stays null and
+  // setupSelection() bails — same effect as an explicit gate.
+  useIframeElementSelector(iframeRef);
+
   useImperativeHandle(ref, () => ({
     reload: () => {
-      if (serveUrl) {
+      if (useWebview) {
+        // Bumping reloadKey changes _v= in the URL, which React threads
+        // back into the webview's `src` prop and re-navigates. Belt-and-
+        // suspenders: also call reload() on the element in case React
+        // skipped the re-render (e.g. reloadKey was already pending).
+        setReloadKey(k => k + 1);
+        webviewRef.current?.reload?.();
+      } else if (serveUrl) {
         setReloadKey(k => k + 1);
       } else if (iframeRef.current && srcdoc) {
         iframeRef.current.srcdoc = '';
@@ -103,13 +135,14 @@ const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
         });
       }
     },
-  }), [serveUrl, srcdoc]);
+  }), [useWebview, serveUrl, srcdoc]);
 
   useEffect(() => {
+    if (useWebview) return;
     if (iframeRef.current && srcdoc != null) {
       iframeRef.current.srcdoc = srcdoc;
     }
-  }, [srcdoc]);
+  }, [srcdoc, useWebview]);
 
   const hasContent = !!(serveUrl || frontendCode?.trim());
 
@@ -159,28 +192,49 @@ const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
         }),
       }}
     >
-      <iframe
-        ref={iframeRef}
-        // Key stable across reloads — only changes when switching MODES
-        // (URL vs srcdoc). Previously the key embedded reloadKey, which
-        // unmounted-and-remounted the iframe on every reload, producing
-        // a visible blank flash mid-burst. With a stable key, reloadKey
-        // still updates iframeSrc → React swaps the src attribute on
-        // the EXISTING iframe element → browser navigates in place,
-        // keeping the prior frame's pixels visible until the new doc
-        // paints. No flash.
-        key={iframeSrc ? 'url-mode' : 'srcdoc'}
-        src={iframeSrc}
-        sandbox="allow-scripts allow-same-origin"
-        style={{
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          background: '#fff',
-          ...style,
-        }}
-        title="App Preview"
-      />
+      {useWebview ? (
+        <webview
+          ref={(el: any) => { webviewRef.current = el; }}
+          // Stable key so React swaps src in place rather than remounting
+          // — preserves the prior frame's pixels through reload, same
+          // pattern as the iframe path.
+          key="url-mode-webview"
+          src={iframeSrc}
+          // Autoplay is the most common cross-app expectation; matches
+          // the BrowserCard default. Plugins / nodeintegration stay off.
+          webpreferences="autoplayPolicy=no-user-gesture-required"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            background: '#fff',
+            ...style,
+          }}
+        />
+      ) : (
+        <iframe
+          ref={iframeRef}
+          // Key stable across reloads — only changes when switching MODES
+          // (URL vs srcdoc). Previously the key embedded reloadKey, which
+          // unmounted-and-remounted the iframe on every reload, producing
+          // a visible blank flash mid-burst. With a stable key, reloadKey
+          // still updates iframeSrc → React swaps the src attribute on
+          // the EXISTING iframe element → browser navigates in place,
+          // keeping the prior frame's pixels visible until the new doc
+          // paints. No flash.
+          key={iframeSrc ? 'url-mode' : 'srcdoc'}
+          src={iframeSrc}
+          sandbox="allow-scripts allow-same-origin"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            background: '#fff',
+            ...style,
+          }}
+          title="App Preview"
+        />
+      )}
     </Box>
   );
 });

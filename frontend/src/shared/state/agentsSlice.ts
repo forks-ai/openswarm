@@ -158,6 +158,13 @@ interface AgentsState {
   loading: boolean;
   historySearch: HistorySearchState;
   trackedNotificationIds: string[];
+  // Maps the temporary frontend draft id minted by createDraftSession to the
+  // real backend session id that replaces it once launchAndSendFirstMessage
+  // fulfills. Lets components that bound to the draft id (App Builder /
+  // ViewEditor in particular) find their new session without falling back
+  // to the global `activeSessionId` — which would silently leak whatever
+  // agent the user last interacted with from the dashboard.
+  draftLaunchMap: Record<string, string>;
 }
 
 const initialState: AgentsState = {
@@ -168,6 +175,7 @@ const initialState: AgentsState = {
   loading: false,
   historySearch: { results: [], total: 0, hasMore: false, query: '', loading: false },
   trackedNotificationIds: [],
+  draftLaunchMap: {},
 };
 
 export const fetchSessions = createAsyncThunk(
@@ -1105,6 +1113,7 @@ const agentsSlice = createSlice({
         delete state.sessions[draftId];
         state.sessions[session.id] = { ...session, streamingMessage: null, tool_group_meta: session.tool_group_meta ?? {} };
         state.activeSessionId = session.id;
+        state.draftLaunchMap[draftId] = session.id;
         state.expandedSessionIds = state.expandedSessionIds.map((id) => (id === draftId ? session.id : id));
         if (shouldExpand && !state.expandedSessionIds.includes(session.id)) {
           state.expandedSessionIds.push(session.id);

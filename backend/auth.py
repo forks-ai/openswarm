@@ -147,6 +147,37 @@ class _TokenScrubFilter(logging.Filter):
                         return True
         return False
 
+    @classmethod
+    def _scrub_args(cls, args):
+        """Replace token within args in-place-equivalent, preserving the
+        original tuple/dict shape. Uvicorn's AccessFormatter unpacks
+        record.args as a 5-tuple (client_addr, method, full_path,
+        http_version, status_code); blanking args to None — what the
+        previous slow path did — triggered `cannot unpack non-iterable
+        NoneType object` for every access-logged line that contained
+        `?token=...`. Returns the same object if nothing was rewritten."""
+        if args is None:
+            return args
+        if isinstance(args, dict):
+            new_dict = None
+            for k, v in args.items():
+                if isinstance(v, str) and _TOKEN in v:
+                    if new_dict is None:
+                        new_dict = dict(args)
+                    new_dict[k] = v.replace(_TOKEN, cls._PLACEHOLDER)
+            return new_dict if new_dict is not None else args
+        if isinstance(args, tuple):
+            new_list = None
+            for i, v in enumerate(args):
+                if isinstance(v, str) and _TOKEN in v:
+                    if new_list is None:
+                        new_list = list(args)
+                    new_list[i] = v.replace(_TOKEN, cls._PLACEHOLDER)
+            return tuple(new_list) if new_list is not None else args
+        if isinstance(args, str) and _TOKEN in args:
+            return args.replace(_TOKEN, cls._PLACEHOLDER)
+        return args
+
     def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover (defensive)
         if not _TOKEN:
             return True
@@ -157,13 +188,33 @@ class _TokenScrubFilter(logging.Filter):
         raw_msg = record.msg if isinstance(record.msg, str) else ""
         if _TOKEN not in raw_msg and not self._args_might_contain_token(record.args):
             return True
-        # Slow path: token might be present after substitution. Format,
-        # scrub, and clear args so the formatted msg is what handlers see.
+        # Slow path. Two-step scrub so we cover both shapes:
+        #   1. In-place rewrite of record.msg and any string in record.args
+        #      (or string-valued dict entry). Preserves args shape so
+        #      uvicorn's AccessFormatter — which unpacks record.args as a
+        #      5-tuple and would explode on args=None — keeps working.
+        #   2. Render via record.getMessage() and check the substituted
+        #      output. If a token survived step 1 (because it was buried
+        #      inside a nested structure or a custom object's repr, e.g.
+        #      `logger.info("env: %s", env_dict)` where the dict's repr
+        #      exposes the value), bake the redacted final string into
+        #      record.msg and clear args. This last-resort path only
+        #      trips for records that the in-place pass couldn't reach,
+        #      and uvicorn access logs never hit it (their args are
+        #      always primitive strings/ints, fully scrubbed by step 1).
         try:
-            msg = record.getMessage()
-            if _TOKEN in msg:
-                record.msg = msg.replace(_TOKEN, self._PLACEHOLDER)
-                record.args = None
+            if isinstance(record.msg, str) and _TOKEN in record.msg:
+                record.msg = record.msg.replace(_TOKEN, self._PLACEHOLDER)
+            scrubbed = self._scrub_args(record.args)
+            if scrubbed is not record.args:
+                record.args = scrubbed
+            try:
+                rendered = record.getMessage()
+                if _TOKEN in rendered:
+                    record.msg = rendered.replace(_TOKEN, self._PLACEHOLDER)
+                    record.args = None
+            except Exception:
+                pass
         except Exception:
             # Never let the scrubber suppress a log line — if formatting
             # fails for any reason, fall through and let normal handling

@@ -493,11 +493,36 @@ const ViewEditor: React.FC<Props> = ({ output }) => {
     })();
   }, [dispatch, output, stableWorkspaceId, settingsLoaded, modelsLoaded, defaultModel, defaultThinkingLevel, modelsByProvider]);
 
+  // Resolve our bound session id strictly through our own pointers:
+  //   1. initialDraftId is the draft we created OR the real id reattached
+  //      from output.session_id.
+  //   2. If the draft was launched in the meantime, the real id lives in
+  //      draftLaunchMap — promote to that.
+  // We deliberately do NOT fall back to state.agents.activeSessionId here.
+  // activeSessionId is a global pointer that any dashboard click, child
+  // chat, or sibling App Builder can clobber, so falling back to it bled
+  // unrelated agents' chats into the App Builder while a session was
+  // still loading (e.g. JobFinder's transcript showing inside the
+  // Chatbot app builder).
+  const launchedFromDraft = useAppSelector((state) =>
+    initialDraftId ? state.agents.draftLaunchMap[initialDraftId] : undefined,
+  );
   const effectiveSessionId = useAppSelector((state) => {
     if (!initialDraftId) return null;
     if (state.agents.sessions[initialDraftId]) return initialDraftId;
-    return state.agents.activeSessionId;
+    const mapped = state.agents.draftLaunchMap[initialDraftId];
+    if (mapped && state.agents.sessions[mapped]) return mapped;
+    return null;
   });
+
+  // Once a draft has been replaced by a real launched session, promote
+  // initialDraftId so subsequent renders bypass the map lookup and we
+  // stay on the real id even if draftLaunchMap is later cleaned up.
+  useEffect(() => {
+    if (launchedFromDraft && initialDraftId && launchedFromDraft !== initialDraftId) {
+      setInitialDraftId(launchedFromDraft);
+    }
+  }, [launchedFromDraft, initialDraftId]);
 
   const agentStatus = useAppSelector((state) => {
     if (!effectiveSessionId) return null;
