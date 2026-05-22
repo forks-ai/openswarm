@@ -48,6 +48,9 @@ export interface ActionsConfig {
 export interface WorkflowStep {
   id: string;
   text: string;
+  /** LLM-generated 3-6 word label shown when the step row is collapsed. The
+   *  full `text` is what the agent actually runs; this is just the title. */
+  label?: string | null;
 }
 
 export interface Workflow {
@@ -94,9 +97,32 @@ export interface OpenCard {
   workflowId: string;
   sourceSessionId?: string | null;
   draft?: Partial<Workflow> | null;
-  view: 'preview' | 'saved' | 'edit' | 'history' | 'history_detail';
+  view:
+    | 'preview'
+    | 'saved'
+    | 'edit'
+    | 'history'
+    | 'history_detail'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'scheduling'
+    | 'edit_agent'
+    | 'fix_agent';
   editFacet?: 'General' | 'Actions' | 'Schedule';
   historyRunId?: string | null;
+  /** The run id currently surfaced by Running/Completed/Failed views. */
+  runId?: string | null;
+  /** When set, the workflow card is "linked" to a sibling session card via
+   *  a labeled arrow chip, and the card footer shifts to Stop Watching /
+   *  Stop Viewing / Force Stop. The session id points at the sibling agent. */
+  sidecarSessionId?: string | null;
+  sidecarKind?: 'watching' | 'viewing-completed' | 'viewing-error' | 'testing' | null;
+  /** Per-step expand state for ExpandedView. Stores step ids. */
+  expandedStepIds?: string[];
+  /** Pre-seed message for the Fix-with-Agent flow so the EditAgent composer
+   *  knows which failure context to lead with. Cleared once consumed. */
+  fixSeed?: { runId: string; stepIdx: number; stepLabel: string; error: string } | null;
 }
 
 interface State {
@@ -256,6 +282,7 @@ const slice = createSlice({
       const r = action.payload;
       const arr = state.runs[r.workflow_id] || [];
       const idx = arr.findIndex((x) => x.id === r.id);
+      const prev = idx >= 0 ? arr[idx] : null;
       if (idx >= 0) arr[idx] = r; else arr.unshift(r);
       state.runs[r.workflow_id] = arr.slice(0, 100);
       const wf = state.items[r.workflow_id];
@@ -264,6 +291,41 @@ const slice = createSlice({
         wf.last_run_status = r.status === 'skipped' ? wf.last_run_status : (r.status as Workflow['last_run_status']);
         wf.last_run_id = r.id;
       }
+      // Auto-flip the card view on run state transitions so the user sees
+      // Running while it streams, Completed on success, Failed on failure.
+      // Only nudge from views that the user hasn't actively navigated away
+      // from (saved / running). Edit, history, scheduling etc. stay put.
+      const card = state.openCards[r.workflow_id];
+      if (card) {
+        const fromRunnable = card.view === 'saved' || card.view === 'running';
+        if (r.status === 'running' && fromRunnable) {
+          card.view = 'running';
+          card.runId = r.id;
+        } else if (prev && prev.status === 'running' && r.status === 'success' && (card.view === 'running' || card.view === 'saved')) {
+          card.view = 'completed';
+          card.runId = r.id;
+        } else if (prev && prev.status === 'running' && r.status === 'failure' && (card.view === 'running' || card.view === 'saved')) {
+          card.view = 'failed';
+          card.runId = r.id;
+        }
+      }
+    },
+    toggleExpandedStep(state, action: { payload: { workflowId: string; stepId: string } }) {
+      const card = state.openCards[action.payload.workflowId];
+      if (!card) return;
+      const arr = card.expandedStepIds || [];
+      const has = arr.includes(action.payload.stepId);
+      card.expandedStepIds = has ? arr.filter((x) => x !== action.payload.stepId) : [...arr, action.payload.stepId];
+    },
+    setCardSidecar(state, action: { payload: { workflowId: string; sessionId: string | null; kind: OpenCard['sidecarKind'] } }) {
+      const card = state.openCards[action.payload.workflowId];
+      if (!card) return;
+      card.sidecarSessionId = action.payload.sessionId;
+      card.sidecarKind = action.payload.kind;
+    },
+    clearFixSeed(state, action: { payload: string }) {
+      const card = state.openCards[action.payload];
+      if (card) card.fixSeed = null;
     },
   },
   extraReducers: (builder) => {
@@ -292,5 +354,14 @@ const slice = createSlice({
   },
 });
 
-export const { upsertRun, openWorkflowCard, updateWorkflowCard, closeWorkflowCard, rekeyOpenCard } = slice.actions;
+export const {
+  upsertRun,
+  openWorkflowCard,
+  updateWorkflowCard,
+  closeWorkflowCard,
+  rekeyOpenCard,
+  toggleExpandedStep,
+  setCardSidecar,
+  clearFixSeed,
+} = slice.actions;
 export default slice.reducer;

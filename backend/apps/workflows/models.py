@@ -61,6 +61,9 @@ class ActionsConfig(BaseModel):
 class WorkflowStep(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     text: str = ""
+    # 3 to 6 word LLM-generated headline shown in the collapsed step row.
+    # The full prompt lives in `text`; this is the "at-a-glance" label.
+    label: Optional[str] = None
 
 
 class Workflow(BaseModel):

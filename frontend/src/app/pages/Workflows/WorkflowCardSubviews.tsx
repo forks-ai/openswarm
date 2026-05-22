@@ -12,6 +12,7 @@ import { useAppDispatch, useAppSelector } from '@/shared/hooks';
 import {
   closeWorkflowCard,
   createWorkflow,
+  toggleExpandedStep,
   updateWorkflow,
   updateWorkflowCard,
   type Workflow,
@@ -251,104 +252,47 @@ function describeSchedule(workflow: Workflow): string {
 export function SavedView({ workflow, steps, runs, activeRunId }: { workflow: Workflow; steps: Workflow['steps']; runs?: WorkflowRun[]; activeRunId?: string | null }) {
   const c = useClaudeTokens();
   const dispatch = useAppDispatch();
-  const connectionMode = useAppSelector((s) => (s as { settings?: { data?: { connection_mode?: string } } }).settings?.data?.connection_mode);
-  void c; void connectionMode;
-
-  // All steps editable inline. Each keystroke updates a local override
-  // map; Discard/Save surface as soon as any step diverges from the
-  // saved value. On Save we PATCH the full steps array, preserving ids.
-  const [localSteps, setLocalSteps] = useState<Record<number, string>>({});
-  const [savingFirst, setSavingFirst] = useState(false);
-  const firstStepDirty = useMemo(() => {
-    for (const k of Object.keys(localSteps)) {
-      const idx = Number(k);
-      const saved = steps[idx]?.text ?? '';
-      if (localSteps[idx] !== saved) return true;
-    }
-    return false;
-  }, [localSteps, steps]);
-  const editableSteps = useMemo(() => {
-    if (!firstStepDirty) return steps;
-    return steps.map((s, idx) => (idx in localSteps ? { ...s, text: localSteps[idx] } : s));
-  }, [firstStepDirty, steps, localSteps]);
-  const onChangeFirstStep = useCallback((idx: number, text: string) => {
-    setLocalSteps((prev) => ({ ...prev, [idx]: text }));
-  }, []);
-  const onSaveFirstStep = useCallback(async () => {
-    if (!firstStepDirty || savingFirst) return;
-    setSavingFirst(true);
-    try {
-      const nextSteps = steps.map((s, idx) => (idx in localSteps ? { ...s, text: localSteps[idx] } : s));
-      await dispatch(updateWorkflow({
-        id: workflow.id,
-        patch: { steps: nextSteps },
-        ifMatch: workflow.updated_at || null,
-      }));
-      setLocalSteps({});
-    } finally {
-      setSavingFirst(false);
-    }
-  }, [firstStepDirty, savingFirst, steps, localSteps, dispatch, workflow.id, workflow.updated_at]);
-  const onDiscardFirstStep = useCallback(() => setLocalSteps({}), []);
-  // Habit suggestion: 3+ manual runs in the last 7 days on a workflow
-  // that isn't scheduled → quietly offer to schedule it. One click flips
-  // the schedule on at the most common time. Auto-disappears once the
-  // user enables a schedule.
-  const habitSuggestion = useMemo(() => {
-    if (workflow.schedule.enabled) return null;
-    if (!runs || runs.length < 3) return null;
-    const cutoff = Date.now() - 7 * 86400000;
-    const recent = runs.filter((r) => r.triggered_by === 'manual' && new Date(r.started_at).getTime() >= cutoff);
-    if (recent.length < 3) return null;
-    // Pick the most common hour-of-day as the seed.
-    const hourCounts: Record<number, number> = {};
-    for (const r of recent) {
-      const h = new Date(r.started_at).getHours();
-      hourCounts[h] = (hourCounts[h] || 0) + 1;
-    }
-    const sorted = Object.entries(hourCounts).sort((a, b) => b[1] - a[1]);
-    const topHour = Number(sorted[0][0]);
-    const formatted = topHour < 12 ? `${topHour === 0 ? 12 : topHour}am` : `${topHour === 12 ? 12 : topHour - 12}pm`;
-    return { hour: topHour, label: `daily ${formatted}`, count: recent.length };
-  }, [workflow.schedule.enabled, runs]);
-  const enableHabit = useCallback(() => {
-    if (!habitSuggestion) return;
-    dispatch(updateWorkflow({
-      id: workflow.id,
-      patch: { schedule: { ...workflow.schedule, enabled: true, repeat_unit: 'day', repeat_every: 1, hour: habitSuggestion.hour, minute: 0 } as any },
-      ifMatch: workflow.updated_at || null,
-    }));
-  }, [habitSuggestion, dispatch, workflow.id, workflow.schedule, workflow.updated_at]);
-  const openEdit = useCallback(() => {
-    dispatch(updateWorkflowCard({ workflowId: workflow.id, patch: { view: 'edit', editFacet: 'Schedule' } }));
+  void runs; void activeRunId;
+  const card = useAppSelector((s) => s.workflows.openCards[workflow.id]);
+  const expandedIds = card?.expandedStepIds || [];
+  const openEditAgent = useCallback(() => {
+    dispatch(updateWorkflowCard({ workflowId: workflow.id, patch: { view: 'edit_agent' } }));
+  }, [dispatch, workflow.id]);
+  const openScheduling = useCallback(() => {
+    dispatch(updateWorkflowCard({ workflowId: workflow.id, patch: { view: 'scheduling' } }));
+  }, [dispatch, workflow.id]);
+  const onToggleStep = useCallback((stepId: string) => {
+    dispatch(toggleExpandedStep({ workflowId: workflow.id, stepId }));
   }, [dispatch, workflow.id]);
 
   const scheduleLine = workflow.schedule.enabled ? describeSchedule(workflow) : 'Schedule this workflow';
+  const scheduleClickable = !workflow.schedule.enabled;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, minHeight: '100%' }}>
       <StepList
         workflow={workflow}
-        steps={editableSteps}
-        runs={runs}
-        activeRunId={activeRunId}
-        framed
-        onChangeStep={onChangeFirstStep}
+        steps={steps}
+        expandable
+        expandedIds={expandedIds}
+        onToggleExpand={onToggleStep}
       />
-      {firstStepDirty && (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-          <ActionBtn label="Discard" tone="danger" icon="trash" onClick={onDiscardFirstStep} />
-          <ActionBtn label={savingFirst ? 'Saving…' : 'Save'} tone="success" icon="check" disabled={savingFirst} onClick={onSaveFirstStep} />
-        </Box>
-      )}
       <Box sx={{ flex: 1 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, color: c.text.secondary, fontSize: '0.86rem', minWidth: 0 }}>
+        <Box
+          onClick={scheduleClickable ? openScheduling : undefined}
+          role={scheduleClickable ? 'button' : undefined}
+          sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.6,
+            color: c.text.secondary, fontSize: '0.86rem', minWidth: 0,
+            cursor: scheduleClickable ? 'pointer' : 'default',
+            '&:hover': scheduleClickable ? { color: c.text.primary } : {},
+          }}>
           <CalendarTodayRounded sx={{ fontSize: 15, color: c.text.muted, flexShrink: 0 }} />
           <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scheduleLine}</Box>
         </Box>
         <Box
-          onClick={openEdit}
+          onClick={openEditAgent}
           role="button"
           sx={{
             display: 'inline-flex', alignItems: 'center', gap: 0.45,

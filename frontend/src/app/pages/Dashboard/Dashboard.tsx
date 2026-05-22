@@ -1804,6 +1804,63 @@ const DashboardInner: React.FC<DashboardProps> = ({ dashboardId, isActive = true
       });
     }
 
+    // Sidecar tethers: when a workflow card opens a sibling agent session
+    // via View Agent / View Error / Watch Live / Test Agent, the dashboard
+    // draws a labeled arrow chip between them (Image #39, #41, #43, #47).
+    for (const wc of Object.values(workflowCards)) {
+      const openCard = workflowOpenCards[wc.workflow_id];
+      if (!openCard?.sidecarSessionId || !openCard.sidecarKind) continue;
+      const sidecarId = openCard.sidecarSessionId;
+      const sidecar = cards[sidecarId];
+      if (!sidecar) continue;
+      let srcX = wc.x, srcY = wc.y;
+      let dstX = sidecar.x, dstY = sidecar.y;
+      if (liveDragInfo) {
+        if (liveDragInfo.cardId === wc.workflow_id) { srcX += liveDragInfo.dx; srcY += liveDragInfo.dy; }
+        if (liveDragInfo.cardId === sidecarId) { dstX += liveDragInfo.dx; dstY += liveDragInfo.dy; }
+      }
+      const dstMeasured = measuredHeightsRef.current[sidecarId];
+      const dstH = dstMeasured ?? (expandedSessionIds.includes(sidecarId)
+        ? Math.max(EXPANDED_CARD_MIN_H, sidecar.height)
+        : sidecar.height);
+      const srcCx = srcX + wc.width / 2;
+      const dstCx = dstX + sidecar.width / 2;
+      const srcAnchors: Anchor[] = [
+        { x: srcX + wc.width, y: srcY + wc.height * 0.54, side: 'right' },
+        { x: srcX, y: srcY + wc.height * 0.54, side: 'left' },
+        { x: srcCx, y: srcY, side: 'top' },
+        { x: srcCx, y: srcY + wc.height, side: 'bottom' },
+      ];
+      const dstAnchors: Anchor[] = [
+        { x: dstX, y: dstY + dstH * 0.54, side: 'left' },
+        { x: dstX + sidecar.width, y: dstY + dstH * 0.54, side: 'right' },
+        { x: dstCx, y: dstY, side: 'top' },
+        { x: dstCx, y: dstY + dstH, side: 'bottom' },
+      ];
+      let bestSrc = srcAnchors[0], bestDst = dstAnchors[0];
+      let bestDist = Infinity;
+      for (const sa of srcAnchors) {
+        for (const da of dstAnchors) {
+          const d = Math.hypot(sa.x - da.x, sa.y - da.y);
+          if (d < bestDist) { bestDist = d; bestSrc = sa; bestDst = da; }
+        }
+      }
+      const x1 = bestSrc.x, y1 = bestSrc.y;
+      const x2 = bestDst.x, y2 = bestDst.y;
+      const pathD = elbowPath(x1, y1, x2, y2);
+      const midX = x1 + (x2 - x1) / 2;
+      const midY = y1 + (y2 - y1) / 2;
+      const sidecarLabel = openCard.sidecarKind === 'testing' ? 'Testing' : 'Watching';
+      workflowTethers.push({
+        key: `sidecar-${wc.workflow_id}`,
+        path: pathD,
+        labelX: midX,
+        labelY: midY,
+        label: sidecarLabel,
+        fading: false,
+      });
+    }
+
     // Configure-panel tethers: each open configure panel is anchored to its
     // workflow card so the user always sees which workflow's action surface
     // they're editing, even after dragging things around.

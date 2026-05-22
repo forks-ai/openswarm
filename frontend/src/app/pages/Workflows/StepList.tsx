@@ -1,55 +1,66 @@
-// Vertical step list with connector + optional live-fill during a run +
-// optional auto-icon per step + optional duration estimate per step.
-// Used by both the Preview (draft) view and the Saved view so the two
-// stay visually consistent.
+// Vertical step list, the one shared building block across every
+// workflow card subview. Supports three orthogonal modes that compose:
+//
+//   editable    onChangeStep is set -> each row is a TextareaAutosize
+//                                       (PreviewView only).
+//   expandable  expandable=true     -> chevron next to each title;
+//                                       click reveals the raw prompt body.
+//   live        stepStatuses is set -> per-step circle becomes done/active/
+//                                       failed; Running view also surfaces
+//                                       activeStepSubtitle + duration.
 
 import React from 'react';
 import Box from '@mui/material/Box';
 import TextareaAutosize from '@mui/material/TextareaAutosize';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded';
+import CheckRounded from '@mui/icons-material/CheckRounded';
+import CloseRounded from '@mui/icons-material/CloseRounded';
 import { useClaudeTokens } from '@/shared/styles/ThemeContext';
 import type { Workflow, WorkflowRun } from '@/shared/state/workflowsSlice';
-import { stepIconFor, estimateStepDuration } from './workflowVisuals';
+
+export type StepStatus = 'pending' | 'active' | 'done' | 'failed';
 
 interface Props {
   workflow?: Workflow | null;
   steps: Workflow['steps'];
   runs?: WorkflowRun[];
-  // Pass the active run id to fill the connector progressively as the
-  // workflow streams. Currently estimated by elapsed/expected; once
-  // per-step telemetry ships, swap to a real step-index signal.
   activeRunId?: string | null;
-  // Subtle frame around each step (used by Preview's edit-mode look). The
-  // Saved view turns this off for a quieter read.
   framed?: boolean;
-  // Callback when a step row is edited inline; only useful in Preview.
+  // Edit mode
   onChangeStep?: (idx: number, text: string) => void;
-  // Callback when the trash icon next to a step is clicked. Pairs with
-  // onAddStep on the parent. Provide both when editing; omit for read-only.
-  onDeleteStep?: (idx: number) => void;
-  onAddStep?: () => void;
+  // Expand mode
+  expandable?: boolean;
+  expandedIds?: string[];
+  onToggleExpand?: (id: string) => void;
+  // Live mode
+  stepStatuses?: StepStatus[];
+  activeStepSubtitle?: string | null;
+  activeStepDuration?: string | null;
+  // Cap visible rows; render "... N more" beneath when truncated.
+  maxVisible?: number;
 }
 
 const CIRCLE_SIZE = 24;
-// Vertical connector lives on the inner edge of the circle column; its
-// x-offset matches CIRCLE_SIZE/2 so it bisects the numbered circles.
 const CONNECTOR_X = CIRCLE_SIZE / 2;
 
-export default function StepList({ workflow, steps, runs, activeRunId, framed, onChangeStep }: Props) {
+export default function StepList(props: Props) {
+  const {
+    steps, framed, onChangeStep,
+    expandable, expandedIds, onToggleExpand,
+    stepStatuses, activeStepSubtitle, activeStepDuration,
+    maxVisible = 4,
+  } = props;
   const c = useClaudeTokens();
-  const hasSteps = steps && steps.length > 0;
-  if (!hasSteps) return null;
+  if (!steps || steps.length === 0) return null;
 
-  // Determine "current step" for live-fill. We don't have per-step
-  // telemetry yet, so estimate via elapsed/expected ratio if a run is
-  // active, otherwise leave it null (no fill).
-  const activeStepIdx = useActiveStepIdx(steps.length, runs, activeRunId);
+  const visible = steps.slice(0, maxVisible);
+  const hiddenCount = Math.max(0, steps.length - visible.length);
+  const expanded = new Set(expandedIds || []);
 
   return (
     <Box sx={{ position: 'relative', pl: 0, mt: 0.25 }}>
-      {/* Connector spine. SVG so the live-fill segment can clip cleanly. */}
-      {steps.length > 1 && (
+      {visible.length > 1 && (
         <Box
           aria-hidden
           sx={{
@@ -63,148 +74,216 @@ export default function StepList({ workflow, steps, runs, activeRunId, framed, o
           }}
         />
       )}
-      {steps.length > 1 && activeStepIdx !== null && (
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            left: CONNECTOR_X - 1,
-            top: CIRCLE_SIZE * 0.5,
-            // Progress = (active+1)/total, capped at total-1 so the fill
-            // never overshoots the bottom circle.
-            height: `calc((100% - ${CIRCLE_SIZE}px) * ${Math.min(steps.length - 1, activeStepIdx) / (steps.length - 1)})`,
-            width: 2,
-            bgcolor: c.accent.primary,
-            transition: 'height 0.4s ease-out',
-            boxShadow: `0 0 6px ${c.accent.primary}`,
-          }}
-        />
-      )}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.85 }}>
-        {steps.map((s, idx) => {
-          const Icon = stepIconFor(s.text || '');
-          const duration = workflow ? estimateStepDuration(workflow, runs, idx) : null;
-          const isActive = activeStepIdx === idx;
-          const isPast = activeStepIdx !== null && idx < activeStepIdx;
-          // Target #54: step 1 always gets the framed-box treatment so
-          // the eye lands on it (it reads as the "entry point" of the
-          // workflow), steps 2+ stay plain text. The disc fill follows
-          // the live run: active step gets the solid accent disc; past
-          // steps a tinted disc; the rest a quiet outlined circle. When
-          // no run is in flight, nothing is "active" so all discs stay
-          // outlined, including step 1.
-          const firstStep = idx === 0;
-          // All steps look identical when framed; the orange disc on
-          // step 1 already does the "entry point" signaling. Singling
-          // out step 1 made 2+ read as static text.
-          const frameThis = framed;
-          const primary = (framed && firstStep) || isActive;
+        {visible.map((s, idx) => {
+          const status: StepStatus = stepStatuses?.[idx] ?? 'pending';
+          const isActive = status === 'active';
+          const isDone = status === 'done';
+          const isFailed = status === 'failed';
+          const isExpanded = expanded.has(s.id);
+          const label = (s.label || '').trim() || firstWords(s.text, 6);
+          const rawBody = (s.text || '').trim();
+          const hasExpandableBody = expandable && rawBody && rawBody !== label;
+
           return (
-            <Box key={s.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, position: 'relative' }}>
-              <Box sx={{
-                width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: '50%',
-                border: `1px solid ${primary || isPast ? c.accent.primary : c.border.medium}`,
-                bgcolor: primary ? c.accent.primary : isPast ? c.accent.primary + '22' : c.bg.surface,
-                color: primary ? '#fff' : isPast ? c.accent.primary : c.text.muted,
-                fontSize: '0.74rem', fontWeight: 600,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-                position: 'relative', zIndex: 1,
-                lineHeight: 1,
-                fontVariantNumeric: 'tabular-nums',
-                transition: 'background 0.25s ease, color 0.25s ease',
-              }}>
-                {Icon ? <Icon sx={{ fontSize: 13 }} /> : (idx + 1)}
-              </Box>
+            <Box key={s.id} sx={{ display: 'flex', flexDirection: 'column' }}>
               <Box
+                onClick={hasExpandableBody && !isActive ? () => onToggleExpand?.(s.id) : undefined}
                 sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  // Hover + focus give 2+ steps a visible edge so the user
-                  // discovers they're editable. Step 1 already shows a
-                  // permanent frame; this just makes the rest discoverable.
-                  '& textarea:hover': {
-                    borderColor: `${c.border.medium} !important`,
-                    background: `${c.bg.surface} !important`,
-                  },
-                  '& textarea:focus': {
-                    borderColor: `${c.accent.primary} !important`,
-                    background: `${c.bg.surface} !important`,
-                  },
+                  display: 'flex', alignItems: 'flex-start', gap: 1.25,
+                  position: 'relative',
+                  cursor: hasExpandableBody && !isActive ? 'pointer' : 'default',
+                  borderRadius: `${c.radius.md}px`,
+                  px: isActive ? 0.5 : 0,
+                  py: isActive ? 0.5 : 0,
+                  mx: isActive ? -0.5 : 0,
+                  bgcolor: isActive ? c.bg.elevated : 'transparent',
+                  transition: 'background 0.18s ease',
+                  '&:hover': hasExpandableBody && !isActive ? { bgcolor: c.bg.elevated } : {},
                 }}>
-                {onChangeStep ? (
-                  <TextareaAutosize
-                    value={s.text}
-                    onChange={(e) => onChangeStep(idx, e.target.value)}
-                    minRows={1}
-                    style={{
-                      width: '100%',
-                      resize: 'none',
-                      boxSizing: 'border-box',
-                      fontFamily: 'inherit',
-                      fontSize: '0.92rem',
-                      color: c.text.primary,
-                      border: frameThis ? `1px solid ${c.border.medium}` : '1px solid transparent',
-                      borderRadius: `${c.radius.md}px`,
-                      background: frameThis ? c.bg.surface : 'transparent',
-                      padding: '6px 10px',
-                      lineHeight: 1.45,
-                      outline: 'none',
-                      overflow: 'hidden',
-                      transition: 'border-color 0.12s ease, background 0.12s ease',
-                    }}
-                  />
-                ) : (
-                  <Box sx={{
-                    fontSize: '0.92rem', color: c.text.primary,
-                    border: frameThis ? `1px solid ${c.border.medium}` : 'none',
-                    borderRadius: frameThis ? `${c.radius.md}px` : 0,
-                    bgcolor: frameThis ? c.bg.surface : 'transparent',
-                    px: frameThis ? 1.25 : 0, py: frameThis ? 0.75 : 0.1,
-                    lineHeight: 1.45,
-                  }}>
-                    {s.text}
-                  </Box>
-                )}
-                {duration && (
-                  <Tooltip title="Estimated from recent successful runs (whole-run duration divided by step count).">
-                    <Typography sx={{ fontSize: '0.7rem', color: c.text.ghost, mt: 0.25, ml: framed ? 1.25 : 0.5 }}>
-                      ~{duration}
+                <StepDisc
+                  index={idx}
+                  status={status}
+                  framed={!!framed}
+                  c={c}
+                />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  {onChangeStep ? (
+                    <TextareaAutosize
+                      value={s.text}
+                      onChange={(e) => onChangeStep(idx, e.target.value)}
+                      minRows={1}
+                      style={{
+                        width: '100%',
+                        resize: 'none',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit',
+                        fontSize: '0.92rem',
+                        color: c.text.primary,
+                        border: framed ? `1px solid ${c.border.medium}` : '1px solid transparent',
+                        borderRadius: `${c.radius.md}px`,
+                        background: framed ? c.bg.surface : 'transparent',
+                        padding: '6px 10px',
+                        lineHeight: 1.45,
+                        outline: 'none',
+                        overflow: 'hidden',
+                        transition: 'border-color 0.12s ease, background 0.12s ease',
+                      }}
+                    />
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: CIRCLE_SIZE }}>
+                      <Typography sx={{
+                        fontSize: '0.92rem',
+                        fontWeight: isActive ? 600 : 500,
+                        color: c.text.primary,
+                        lineHeight: 1.45,
+                        flex: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {label}
+                      </Typography>
+                      {isActive && activeStepDuration && (
+                        <Typography sx={{ fontSize: '0.78rem', color: c.text.muted, mr: hasExpandableBody ? 0 : 0.5, flexShrink: 0 }}>
+                          {activeStepDuration}
+                        </Typography>
+                      )}
+                      {hasExpandableBody && !isActive && (
+                        <KeyboardArrowDownRounded sx={{
+                          fontSize: 18,
+                          color: c.text.muted,
+                          transform: isExpanded ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.18s ease',
+                          flexShrink: 0,
+                        }} />
+                      )}
+                    </Box>
+                  )}
+                  {/* Active step: tool call subtitle. Sits under the title
+                      with a small leading glyph so the user can read it as
+                      "what the agent is doing right now". */}
+                  {isActive && activeStepSubtitle && (
+                    <Typography sx={{
+                      fontSize: '0.82rem',
+                      color: c.text.secondary,
+                      mt: 0.4,
+                      display: 'flex', alignItems: 'center', gap: 0.5,
+                    }}>
+                      <Box component="span" sx={{ display: 'inline-flex', fontSize: 13 }}>{'▢'}</Box>
+                      {activeStepSubtitle}
                     </Typography>
-                  </Tooltip>
-                )}
+                  )}
+                  {/* Expanded body: the raw prompt that lives under the
+                      LLM label. Soft elevated panel so it reads as a
+                      drill-down, not a separate step. */}
+                  {hasExpandableBody && isExpanded && (
+                    <Box sx={{
+                      mt: 0.6,
+                      p: 1,
+                      borderRadius: `${c.radius.md}px`,
+                      bgcolor: c.bg.elevated,
+                      border: `1px solid ${c.border.subtle}`,
+                    }}>
+                      <Typography sx={{ fontSize: '0.82rem', color: c.text.secondary, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                        {rawBody}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
               </Box>
+              {isFailed && undefined}
+              {isDone && undefined}
             </Box>
           );
         })}
       </Box>
+      {hiddenCount > 0 && (
+        <Typography sx={{
+          fontSize: '0.86rem',
+          color: c.text.secondary,
+          mt: 0.6,
+          ml: 0,
+        }}>
+          ... {hiddenCount} more
+        </Typography>
+      )}
     </Box>
   );
 }
 
-// Synthesize an "active step" index from the active run's elapsed time
-// vs the historical average run duration. Doesn't pretend to be exact;
-// good enough for the user to see the progress bar advance during a
-// long workflow. Returns null when no live run.
-function useActiveStepIdx(stepCount: number, runs: WorkflowRun[] | undefined, activeRunId: string | null | undefined): number | null {
-  const [tick, setTick] = React.useState(0);
-  React.useEffect(() => {
-    if (!activeRunId) return;
-    const id = window.setInterval(() => setTick((t) => (t + 1) % 1000000), 1000);
-    return () => window.clearInterval(id);
-  }, [activeRunId]);
-  void tick;
-  if (!activeRunId || !runs) return null;
-  const active = runs.find((r) => r.id === activeRunId && r.status === 'running');
-  if (!active) return null;
-  const elapsed = Date.now() - new Date(active.started_at).getTime();
-  const completed = runs.filter((r) => (r.status === 'success' || r.status === 'ran_late') && r.finished_at);
-  if (completed.length === 0) {
-    // No history: jump to the middle step so the bar advances visibly.
-    return Math.min(stepCount - 1, Math.max(0, Math.floor(stepCount / 2)));
+function StepDisc({ index, status, framed, c }: { index: number; status: StepStatus; framed: boolean; c: ReturnType<typeof useClaudeTokens> }) {
+  if (status === 'done') {
+    return (
+      <Box sx={{
+        width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: '50%',
+        bgcolor: c.text.muted + '55',
+        color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, position: 'relative', zIndex: 1,
+      }}>
+        <CheckRounded sx={{ fontSize: 15 }} />
+      </Box>
+    );
   }
-  const durations = completed.slice(0, 10).map((r) => new Date(r.finished_at!).getTime() - new Date(r.started_at).getTime());
-  const avg = durations.reduce((a, b) => a + b, 0) / durations.length || 1;
-  const ratio = Math.min(0.99, Math.max(0, elapsed / avg));
-  return Math.min(stepCount - 1, Math.floor(ratio * stepCount));
+  if (status === 'failed') {
+    return (
+      <Box sx={{
+        width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: '50%',
+        bgcolor: c.status.error,
+        color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, position: 'relative', zIndex: 1,
+        boxShadow: `0 0 0 3px ${c.status.error}22`,
+      }}>
+        <CloseRounded sx={{ fontSize: 15 }} />
+      </Box>
+    );
+  }
+  if (status === 'active') {
+    return (
+      <Box sx={{
+        width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: '50%',
+        border: `2px solid ${c.accent.primary}`,
+        bgcolor: c.bg.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, position: 'relative', zIndex: 1,
+        animation: 'workflow-step-spin 1.4s linear infinite',
+        '@keyframes workflow-step-spin': {
+          '0%':   { boxShadow: `0 0 0 0 ${c.accent.primary}55` },
+          '50%':  { boxShadow: `0 0 0 4px ${c.accent.primary}00` },
+          '100%': { boxShadow: `0 0 0 0 ${c.accent.primary}55` },
+        },
+      }}>
+        <Box sx={{
+          width: 8, height: 8, borderRadius: '50%',
+          border: `1.5px solid ${c.accent.primary}`,
+          borderTopColor: 'transparent',
+          animation: 'workflow-step-dot 0.9s linear infinite',
+          '@keyframes workflow-step-dot': {
+            '0%':   { transform: 'rotate(0deg)' },
+            '100%': { transform: 'rotate(360deg)' },
+          },
+        }} />
+      </Box>
+    );
+  }
+  // pending
+  void framed;
+  void index;
+  return (
+    <Box sx={{
+      width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: '50%',
+      border: `1px solid ${c.border.medium}`,
+      bgcolor: c.bg.surface,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0, position: 'relative', zIndex: 1,
+    }} />
+  );
+}
+
+function firstWords(s: string, n: number): string {
+  const words = (s || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length <= n) return words.join(' ');
+  return words.slice(0, n).join(' ') + '...';
 }

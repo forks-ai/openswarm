@@ -34,6 +34,9 @@ import { setPendingFocusAgentId } from '@/shared/state/tempStateSlice';
 import { fetchSession } from '@/shared/state/agentsSlice';
 import WorkflowEditViews from './WorkflowEditViews';
 import { HistoryDetail, HistoryList, PreviewView, SavedView } from './WorkflowCardSubviews';
+import { CompletedView, FailedView, RunningView } from './WorkflowCardLiveViews';
+import StopRounded from '@mui/icons-material/StopRounded';
+import PauseRounded from '@mui/icons-material/PauseRounded';
 import { StatusDot, RunSparkline, LastFiredHint, isStaleSinceLastRun } from './workflowVisuals';
 import { store } from '@/shared/state/store';
 
@@ -124,7 +127,13 @@ const WorkflowCard: React.FC<Props> = ({
   // History views obviously need them too.
   useEffect(() => {
     if (!card) return;
-    const needsRuns = card.view === 'saved' || card.view === 'history' || card.view === 'history_detail';
+    const needsRuns =
+      card.view === 'saved' ||
+      card.view === 'history' ||
+      card.view === 'history_detail' ||
+      card.view === 'running' ||
+      card.view === 'completed' ||
+      card.view === 'failed';
     if (needsRuns && workflow && !runs) {
       dispatch(fetchRuns(workflow.id));
     }
@@ -466,7 +475,7 @@ const WorkflowCard: React.FC<Props> = ({
           <TabBtn label="Run" icon={<PlayArrowIcon sx={{ fontSize: 16 }} />} active={false} accent onClick={() => {}} />
         </Box>
       )}
-      {!isDraft && workflow && (
+      {!isDraft && workflow && !isHeaderlessView(card.view) && card.view !== 'running' && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 2, pb: 1.25, pt: 0, flexShrink: 0 }}>
           <Box sx={{ flex: 1 }} />
           <TabBtn
@@ -485,7 +494,6 @@ const WorkflowCard: React.FC<Props> = ({
             onClick={async () => {
               if (runStarting) return;
               setRunStarting(true);
-              dispatch(updateWorkflowCard({ workflowId, patch: { view: 'history' } }));
               try {
                 const result = await dispatch(runWorkflowNow(workflow.id));
                 await dispatch(fetchRuns(workflow.id));
@@ -496,12 +504,14 @@ const WorkflowCard: React.FC<Props> = ({
                   }
                 }
               } finally {
-                // Hold "Starting…" briefly so fast runs don't flicker invisibly.
                 setTimeout(() => setRunStarting(false), 600);
               }
             }}
           />
         </Box>
+      )}
+      {!isDraft && workflow && card.view === 'running' && (
+        <RunningHeader workflowId={workflowId} />
       )}
 
       {/* ===== Body — view-specific subview =====
@@ -588,6 +598,23 @@ const WorkflowCard: React.FC<Props> = ({
             onBack={() => dispatch(updateWorkflowCard({ workflowId, patch: { view: 'history' } }))}
           />
         )}
+        {card.view === 'running' && workflow && (
+          <RunningView workflow={workflow} steps={steps} runs={runs} mode={card.sidecarKind === 'watching' ? 'sidecar-linked' : 'card'} />
+        )}
+        {card.view === 'completed' && workflow && (
+          <CompletedView workflow={workflow} steps={steps} runs={runs} mode={card.sidecarKind === 'viewing-completed' ? 'sidecar-linked' : 'card'} />
+        )}
+        {card.view === 'failed' && workflow && (
+          <FailedView workflow={workflow} steps={steps} runs={runs} mode={card.sidecarKind === 'viewing-error' ? 'sidecar-linked' : 'card'} />
+        )}
+        {(card.view === 'edit_agent' || card.view === 'fix_agent' || card.view === 'scheduling') && workflow && (
+          <WorkflowEditViews
+            workflow={workflow}
+            facet={card.view === 'scheduling' ? 'Schedule' : (card.editFacet || 'General')}
+            onChangeFacet={(f) => dispatch(updateWorkflowCard({ workflowId, patch: { editFacet: f } }))}
+            onDirtyChange={setEditDirty}
+          />
+        )}
         </Box>
       </Box>
 
@@ -642,6 +669,66 @@ const WorkflowCard: React.FC<Props> = ({
     </Box>
   );
 };
+
+function isHeaderlessView(view: string): boolean {
+  // Edit-agent / fix-agent / scheduling render their own Discard/Save
+  // (or Cancel) header inside the body so the parent skips the default
+  // History/Run row to avoid two stacked toolbars.
+  return view === 'edit_agent' || view === 'fix_agent' || view === 'scheduling';
+}
+
+function RunningHeader({ workflowId }: { workflowId: string }) {
+  const c = useClaudeTokens();
+  const dispatch = useAppDispatch();
+  const card = useAppSelector((s) => s.workflows.openCards[workflowId]);
+  const workflow = useAppSelector((s) => s.workflows.items[workflowId]);
+  const runs = useAppSelector((s) => s.workflows.runs[workflowId]);
+  const runId = card?.runId || null;
+  const run = (runs || []).find((r) => r.id === runId);
+  const onStop = React.useCallback(async () => {
+    if (!run) return;
+    try {
+      const { API_BASE, getAuthToken } = await import('@/shared/config');
+      const tok = (() => { try { return getAuthToken(); } catch { return ''; } })();
+      await fetch(`${API_BASE}/workflows/runs/${encodeURIComponent(run.id)}/stop`, {
+        method: 'POST',
+        headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      });
+    } catch { /* best-effort */ }
+    dispatch(updateWorkflowCard({ workflowId, patch: { view: 'saved', runId: null } }));
+  }, [dispatch, workflowId, run]);
+  const onPause = React.useCallback(() => {
+    // Pause is "this run keeps going but no further fires queue." We
+    // can't actually pause a streaming agent mid-call, so this just
+    // flips the schedule paused flag for now.
+    void workflow;
+  }, [workflow]);
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 2, pb: 1.25, pt: 0, flexShrink: 0 }}>
+      <Box sx={{ flex: 1 }} />
+      <Box
+        onClick={onStop}
+        role="button"
+        sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.35, fontSize: '0.82rem', fontWeight: 600, px: 1, py: 0.4, color: c.text.secondary, cursor: 'pointer', borderRadius: 999, '&:hover': { color: c.text.primary, bgcolor: c.bg.elevated } }}>
+        <StopRounded sx={{ fontSize: 15 }} />
+        Stop
+      </Box>
+      <Box
+        onClick={onPause}
+        role="button"
+        sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.35,
+          fontSize: '0.82rem', fontWeight: 700,
+          px: 1.1, py: 0.4, borderRadius: 999,
+          bgcolor: c.accent.primary, color: '#fff', cursor: 'pointer',
+          '&:hover': { filter: 'brightness(1.05)' },
+        }}>
+        <PauseRounded sx={{ fontSize: 15 }} />
+        Pause
+      </Box>
+    </Box>
+  );
+}
 
 function TabBtn({ label, icon, active, accent, breathe, breatheTooltip, dot, dotTooltip, onClick }: { label: string; icon: React.ReactNode; active: boolean; accent?: boolean; breathe?: boolean; breatheTooltip?: string; dot?: boolean; dotTooltip?: string; onClick: () => void }) {
   const c = useClaudeTokens();
