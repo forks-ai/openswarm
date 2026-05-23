@@ -1,6 +1,6 @@
 import os
 
-from backend.apps.agents.prompt_context import _resolve_attached_skills, _resolve_forced_tools
+from backend.apps.agents.manager.prompt.prompt_context import _resolve_attached_skills, _resolve_forced_tools
 
 
 def _build_dir_tree(root: str, max_depth: int = 4, prefix: str = "") -> list[str]:

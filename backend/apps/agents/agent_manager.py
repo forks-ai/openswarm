@@ -33,28 +33,28 @@ from backend.apps.agents.core.error_classify import (
     _is_long_context_error,
     _is_transient_capacity_error,
 )
-from backend.apps.agents.session_store import (
+from backend.apps.agents.manager.session.session_store import (
     _delete_session_file,
     _load_all_session_data,
     _load_session_data,
     _save_session,
     build_search_text,
 )
-from backend.apps.agents.cloud_sync import _sync_session_close
-from backend.apps.agents.workspace_git import _detect_git_identity, _ensure_cwd_git_repo
-from backend.apps.agents.tool_catalog import (
+from backend.apps.agents.manager.session.cloud_sync import _sync_session_close
+from backend.apps.agents.manager.session.workspace_git import _detect_git_identity, _ensure_cwd_git_repo
+from backend.apps.agents.manager.prompt.tool_catalog import (
     FULL_TOOLS,
     _get_all_known_tool_names,
     _get_denied_tool_names,
     _is_fully_denied,
 )
 from backend.apps.agents.core.aux_llm import _safe_resp_text
-from backend.apps.agents.history_compaction import (
+from backend.apps.agents.manager.session.history_compaction import (
     _build_history_prefix,
     _get_branch_messages,
     _truncate_large_tool_result,
 )
-from backend.apps.agents.prompt_context import (
+from backend.apps.agents.manager.prompt.prompt_context import (
     _build_browser_context,
     _build_connected_tools_context,
     _build_mcp_registry_summary,
@@ -64,7 +64,7 @@ from backend.apps.agents.prompt_context import (
     _resolve_forced_tools,
     _resolve_mode,
 )
-from backend.apps.agents.attachments import (
+from backend.apps.agents.manager.prompt.attachments import (
     _build_dir_tree,
     _build_prompt_content,
     _resolve_attachments,

@@ -5,7 +5,7 @@ from backend.apps.tools_lib.tools_lib import (
     _load_all as load_all_tools,
     _sanitize_server_name,
 )
-from backend.apps.agents.tool_catalog import _get_denied_tool_names, _is_fully_denied
+from backend.apps.agents.manager.prompt.tool_catalog import _get_denied_tool_names, _is_fully_denied
 
 
 def _resolve_mode(mode_id: str, get_all_tool_names: Callable[[], list[str]]) -> tuple[list[str], str | None, str | None]:
