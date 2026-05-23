@@ -1,9 +1,9 @@
 import React, { type RefObject } from 'react';
 import Box from '@mui/material/Box';
 import DashboardToolbar from './DashboardToolbar';
-import CanvasControls from './CanvasControls';
-import CardSearchPalette from './CardSearchPalette';
-import DirectionHints from './DirectionHints';
+import CanvasControls from './controls/CanvasControls';
+import CardSearchPalette from './controls/CardSearchPalette';
+import DirectionHints from './controls/DirectionHints';
 import type { AgentSession } from '@/shared/state/agentsSlice';
 import type {
   CardPosition,
