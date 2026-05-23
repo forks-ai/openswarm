@@ -1,25 +1,25 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useClaudeTokens } from '@/shared/styles/ThemeContext';
 import { useElementSelection } from '@/app/components/ElementSelectionContext';
-import { useCanvasControls } from './useCanvasControls';
+import { useCanvasControls } from '../interaction/useCanvasControls';
 import { useDashboardSelection } from './useDashboardSelection';
 import { useDashboardSelectors } from './useDashboardSelectors';
-import { getCardRect } from './geometry/getCardRect';
-import { computeContentBounds } from './geometry/contentBounds';
+import { getCardRect } from '../../geometry/getCardRect';
+import { computeContentBounds } from '../../geometry/contentBounds';
 import { useDashboardUiState } from './useDashboardUiState';
 import { useLayoutSave } from './useLayoutSave';
-import { useTethers } from './geometry/dashboardTethers';
-import { useArrowNav } from './useArrowNav';
-import { useDashboardShortcuts } from './useDashboardShortcuts';
-import { useDashboardClipboard } from './useDashboardClipboard';
-import { useCardDrag } from './useCardDrag';
-import { useSubAgentLifecycle } from './useSubAgentLifecycle';
-import { useDashboardLifecycle } from './useDashboardLifecycle';
+import { useTethers } from '../../geometry/dashboardTethers';
+import { useArrowNav } from '../interaction/useArrowNav';
+import { useDashboardShortcuts } from '../interaction/useDashboardShortcuts';
+import { useDashboardClipboard } from '../interaction/useDashboardClipboard';
+import { useCardDrag } from '../interaction/useCardDrag';
+import { useSubAgentLifecycle } from '../lifecycle/useSubAgentLifecycle';
+import { useDashboardLifecycle } from '../lifecycle/useDashboardLifecycle';
 import { useDashboardThumbnail } from './useDashboardThumbnail';
-import { useSiblingRestack } from './useSiblingRestack';
-import { useAgentSpawn } from './useAgentSpawn';
-import { useDashboardCardActions } from './useDashboardCardActions';
-import { useDashboardInteractions } from './useDashboardInteractions';
+import { useSiblingRestack } from '../lifecycle/useSiblingRestack';
+import { useAgentSpawn } from '../lifecycle/useAgentSpawn';
+import { useDashboardCardActions } from '../lifecycle/useDashboardCardActions';
+import { useDashboardInteractions } from '../interaction/useDashboardInteractions';
 
 // Composition root for the dashboard. Wires every dashboard hook together
 // and returns exactly the prop bag DashboardCanvas renders. Kept out of

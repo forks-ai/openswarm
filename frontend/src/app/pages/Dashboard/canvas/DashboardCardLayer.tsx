@@ -14,7 +14,7 @@ import {
   type NotePosition,
 } from '@/shared/state/dashboardLayoutSlice';
 import type { Output } from '@/shared/state/outputsSlice';
-import type { CardType, useDashboardSelection } from '../useDashboardSelection';
+import type { CardType, useDashboardSelection } from '../hooks/state/useDashboardSelection';
 
 type Selection = ReturnType<typeof useDashboardSelection>;
 type SpawnOrigin = { x: number; y: number; type?: 'branch' };

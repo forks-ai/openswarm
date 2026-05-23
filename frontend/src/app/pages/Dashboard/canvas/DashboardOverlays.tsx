@@ -10,7 +10,7 @@ import type {
   ViewCardPosition,
   BrowserCardPosition,
 } from '@/shared/state/dashboardLayoutSlice';
-import type { useCanvasControls } from '../useCanvasControls';
+import type { useCanvasControls } from '../hooks/interaction/useCanvasControls';
 
 type Canvas = ReturnType<typeof useCanvasControls>;
 type Direction = 'left' | 'right' | 'up' | 'down';

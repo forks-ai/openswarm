@@ -4,7 +4,7 @@ import { useAppDispatch } from '@/shared/hooks';
 import { expandSession } from '@/shared/state/agentsSlice';
 import { bringToFront } from '@/shared/state/dashboardLayoutSlice';
 import type { CardPosition, ViewCardPosition, BrowserCardPosition } from '@/shared/state/dashboardLayoutSlice';
-import type { CardType } from './useDashboardSelection';
+import type { CardType } from '../state/useDashboardSelection';
 import type { CanvasActions } from './useCanvasControls';
 
 type Direction = 'left' | 'right' | 'up' | 'down';

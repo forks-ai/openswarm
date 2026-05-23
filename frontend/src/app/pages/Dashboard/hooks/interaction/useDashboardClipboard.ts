@@ -15,7 +15,7 @@ import {
 } from '@/shared/state/dashboardLayoutSlice';
 import type { Output } from '@/shared/state/outputsSlice';
 import { setClipboardCards, getClipboardCards, type ClipboardCard } from '@/shared/dashboardClipboard';
-import type { CardType, useDashboardSelection } from './useDashboardSelection';
+import type { CardType, useDashboardSelection } from '../state/useDashboardSelection';
 
 type Selection = ReturnType<typeof useDashboardSelection>;
 

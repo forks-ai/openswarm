@@ -3,7 +3,7 @@ import { report } from '@/shared/serviceClient';
 import { useAppDispatch } from '@/shared/hooks';
 import { collapseSession, expandSession } from '@/shared/state/agentsSlice';
 import { bringToFront } from '@/shared/state/dashboardLayoutSlice';
-import type { CardType, useDashboardSelection } from './useDashboardSelection';
+import type { CardType, useDashboardSelection } from '../state/useDashboardSelection';
 import type { useCanvasControls } from './useCanvasControls';
 
 type Selection = ReturnType<typeof useDashboardSelection>;

@@ -3,7 +3,7 @@ import { report } from '@/shared/serviceClient';
 import { useAppDispatch } from '@/shared/hooks';
 import { closeSession, toggleExpandSession } from '@/shared/state/agentsSlice';
 import { removeViewCard, removeBrowserCard, removeNote } from '@/shared/state/dashboardLayoutSlice';
-import type { useDashboardSelection } from './useDashboardSelection';
+import type { useDashboardSelection } from '../state/useDashboardSelection';
 
 type Selection = ReturnType<typeof useDashboardSelection>;
 

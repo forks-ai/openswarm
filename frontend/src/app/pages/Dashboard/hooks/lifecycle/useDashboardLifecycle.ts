@@ -22,7 +22,7 @@ import { dashboardWs } from '@/shared/ws/WebSocketManager';
 import { initBrowserCommandHandler } from '@/shared/browserCommandHandler';
 import { clearPendingBrowserUrl, clearPendingFocusAgentId } from '@/shared/state/tempStateSlice';
 import { API_BASE } from '@/shared/config';
-import type { CanvasActions } from './useCanvasControls';
+import type { CanvasActions } from '../interaction/useCanvasControls';
 
 interface UseDashboardLifecycleArgs {
   isActive: boolean;

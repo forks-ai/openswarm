@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { report } from '@/shared/serviceClient';
 import { useAppDispatch } from '@/shared/hooks';
 import { moveCards } from '@/shared/state/dashboardLayoutSlice';
-import type { CardType, useDashboardSelection } from './useDashboardSelection';
+import type { CardType, useDashboardSelection } from '../state/useDashboardSelection';
 import type { CanvasActions } from './useCanvasControls';
 
 type Selection = ReturnType<typeof useDashboardSelection>;

@@ -11,8 +11,8 @@ import {
   clearPendingFocusNoteId,
   EXPANDED_CARD_MIN_H,
 } from '@/shared/state/dashboardLayoutSlice';
-import type { CardType, useDashboardSelection } from './useDashboardSelection';
-import type { CanvasActions } from './useCanvasControls';
+import type { CardType, useDashboardSelection } from '../state/useDashboardSelection';
+import type { CanvasActions } from '../interaction/useCanvasControls';
 
 type Selection = ReturnType<typeof useDashboardSelection>;
 

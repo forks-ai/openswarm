@@ -2,7 +2,7 @@ import React from 'react';
 import SelectionOverlay from '@/app/components/SelectionOverlay';
 import { ElementSelectionProvider } from '@/app/components/ElementSelectionContext';
 import { useDomElementSelector } from '@/app/components/useDomElementSelector';
-import { useDashboardController } from './useDashboardController';
+import { useDashboardController } from './hooks/state/useDashboardController';
 import DashboardCanvas from './canvas/DashboardCanvas';
 
 const DashboardSelectionOverlay: React.FC = () => {
