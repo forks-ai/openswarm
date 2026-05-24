@@ -347,7 +347,7 @@ async def generate_name(dashboard_id: str):
             system=system,
             messages=[{"role": "user", "content": user_content}],
         )
-        from backend.apps.agents.agent_manager import _safe_resp_text
+        from backend.apps.agents.core.aux_llm import _safe_resp_text
         generated = _safe_resp_text(resp).strip().strip('"\'')
         if generated:
             fallback = generated

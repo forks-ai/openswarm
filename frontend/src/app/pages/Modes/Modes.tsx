@@ -14,7 +14,7 @@ import IconButton from '@mui/material/IconButton';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Tooltip from '@mui/material/Tooltip';
-import { Skeleton } from '@/app/components/Loading';
+import { Skeleton } from '@/app/components/feedback/Loading';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
@@ -48,8 +48,8 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import ListSubheader from '@mui/material/ListSubheader';
 import { useClaudeTokens } from '@/shared/styles/ThemeContext';
-import DirectoryBrowser from '@/app/components/DirectoryBrowser';
-import RichPromptEditor from '@/app/components/RichPromptEditor';
+import DirectoryBrowser from '@/app/components/editor/DirectoryBrowser';
+import RichPromptEditor from '@/app/components/editor/RichPromptEditor';
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   smart_toy: <SmartToyOutlinedIcon sx={{ fontSize: 20 }} />,

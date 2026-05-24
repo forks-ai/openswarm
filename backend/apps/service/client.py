@@ -30,6 +30,7 @@ from uuid import uuid4
 import httpx
 
 from backend.apps.service import buffer
+from backend.apps.service.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def _get_install_id() -> str:
     if _install_id:
         return _install_id
     try:
-        from backend.apps.settings.settings import load_settings, _save_settings
+        from backend.apps.settings.store import load_settings, _save_settings
         s = load_settings()
         iid = getattr(s, "installation_id", None)
         if not iid:
@@ -89,7 +90,7 @@ def _get_user_id() -> Optional[str]:
     if _user_id:
         return _user_id
     try:
-        from backend.apps.settings.settings import load_settings
+        from backend.apps.settings.store import load_settings
         s = load_settings()
         # Prefer the cloud-issued user_id (UUID) if the user has signed in
         # via Google OAuth, magic link, or Stripe checkout; that's the
@@ -117,7 +118,7 @@ def _is_enabled(kind: str) -> bool:
     if kind == "diagnostic":
         return True
     try:
-        from backend.apps.settings.settings import load_settings
+        from backend.apps.settings.store import load_settings
         s = load_settings()
         mode = getattr(s, "service_diagnostics_mode", None)
         if mode == "minimal":
@@ -173,11 +174,7 @@ def _envelope() -> dict:
             env["locale"] = loc
     except Exception:
         pass
-    try:
-        from backend.apps.service.service import APP_VERSION
-        env["app_version"] = APP_VERSION
-    except Exception:
-        pass
+    env["app_version"] = APP_VERSION
     # How this build was packaged. Set by the platform-specific build script
     # (electron-builder afterPack hooks for dmg / exe / appimage / deb / rpm).
     # Defaults to "dev" when running from `bash run.sh` in a checked-out repo.
@@ -187,7 +184,7 @@ def _envelope() -> dict:
 
 def _base_url() -> str:
     try:
-        from backend.apps.settings.settings import load_settings
+        from backend.apps.settings.store import load_settings
         from backend.apps.settings.credentials import OPENSWARM_DEFAULT_PROXY_URL
         s = load_settings()
         return (getattr(s, "openswarm_proxy_url", None) or OPENSWARM_DEFAULT_PROXY_URL).rstrip("/")

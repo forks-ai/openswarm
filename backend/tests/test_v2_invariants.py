@@ -61,12 +61,12 @@ def _fake_tool(
 
 
 # ===========================================================================
-# Group A — MCP activation gate (the non-bypassable ToolSearch invariant)
+# Group A, MCP activation gate (the non-bypassable ToolSearch invariant)
 # ===========================================================================
 # The product invariant: NO MCP tool is callable until the model has
 # explicitly searched + activated the server, and the user has approved
 # the activation. The gate lives at the dispatch layer in
-# `_build_mcp_servers` — even if the prompt rules are ignored, the SDK
+# `_build_mcp_servers`, even if the prompt rules are ignored, the SDK
 # never sees the unactivated server.
 
 
@@ -211,7 +211,7 @@ async def test_gate_stress_random_activations():
 
 
 # ===========================================================================
-# Group B — needs_fresh_session soft-restart
+# Group B, needs_fresh_session soft-restart
 # ===========================================================================
 # When MCPActivate fires mid-session, the bundled CLI doesn't re-read
 # mcp_servers from a fork. We force a fresh sdk_session_id so the new
@@ -220,14 +220,14 @@ async def test_gate_stress_random_activations():
 
 def test_needs_fresh_session_field_default_false():
     """Brand-new sessions must default needs_fresh_session=False."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     assert s.needs_fresh_session is False
 
 
 def test_needs_fresh_session_serializes_round_trip():
     """Pydantic round-trip must preserve the flag for session.json persistence."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.needs_fresh_session = True
     s.sdk_session_id = "claude-session-abc-123"
@@ -239,8 +239,8 @@ def test_needs_fresh_session_serializes_round_trip():
 
 
 def test_legacy_session_json_loads_without_field():
-    """Old session JSONs predate the field — Pydantic must fill in default."""
-    from backend.apps.agents.models import AgentSession
+    """Old session JSONs predate the field, Pydantic must fill in default."""
+    from backend.apps.agents.core.models import AgentSession
     legacy = {
         "id": "old", "name": "legacy", "model": "sonnet", "mode": "agent",
         "status": "completed", "messages": [],
@@ -255,7 +255,7 @@ def test_legacy_session_json_loads_without_field():
 
 def test_mcp_activate_sets_fresh_session_when_history_exists():
     """The gate logic at main.py: if sdk_session_id exists, set needs_fresh_session=True."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     # Mid-session: sdk already locked in
     s = AgentSession(id="mid", name="t", model="sonnet", mode="agent")
     s.sdk_session_id = "claude-session-existing"
@@ -267,7 +267,7 @@ def test_mcp_activate_sets_fresh_session_when_history_exists():
 
 def test_mcp_activate_skips_fresh_session_on_first_turn():
     """First-turn activation: no sdk_session_id yet, so needs_fresh_session stays False."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="fresh", name="t", model="sonnet", mode="agent")
     # No sdk_session_id yet
     if s.sdk_session_id:
@@ -277,7 +277,7 @@ def test_mcp_activate_skips_fresh_session_on_first_turn():
 
 def test_active_mcps_append_idempotent():
     """Activating the same server twice doesn't dupe."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.active_mcps.append("gmail")
     if "gmail" not in s.active_mcps:
@@ -286,13 +286,13 @@ def test_active_mcps_append_idempotent():
 
 
 # ===========================================================================
-# Group C — Pydantic Message backward compat (no ghost fields, legacy loads)
+# Group C, Pydantic Message backward compat (no ghost fields, legacy loads)
 # ===========================================================================
 
 
 def test_message_no_ghost_fields():
     """answer_tokens + thought_signature must NOT be Message attributes anymore."""
-    from backend.apps.agents.models import Message
+    from backend.apps.agents.core.models import Message
     m = Message(role="thinking", content="x")
     dumped = m.model_dump(mode="json")
     assert "answer_tokens" not in dumped
@@ -300,8 +300,8 @@ def test_message_no_ghost_fields():
 
 
 def test_message_legacy_payload_with_ghost_fields_still_loads():
-    """Old session JSONs may carry the deleted fields — Pydantic must ignore them."""
-    from backend.apps.agents.models import Message
+    """Old session JSONs may carry the deleted fields, Pydantic must ignore them."""
+    from backend.apps.agents.core.models import Message
     legacy = {
         "id": "m1",
         "role": "thinking",
@@ -323,7 +323,7 @@ def test_message_legacy_payload_with_ghost_fields_still_loads():
 
 def test_message_kept_fields():
     """Verify the live fields remain on the model."""
-    from backend.apps.agents.models import Message
+    from backend.apps.agents.core.models import Message
     m = Message(
         role="thinking",
         content="x",
@@ -340,7 +340,7 @@ def test_message_kept_fields():
 
 def test_message_round_trip_50_iterations():
     """Stress: 50 randomized message round-trips."""
-    from backend.apps.agents.models import Message
+    from backend.apps.agents.core.models import Message
     for _ in range(50):
         roles = ["user", "assistant", "tool_call", "tool_result", "system", "thinking"]
         m = Message(
@@ -359,7 +359,7 @@ def test_message_round_trip_50_iterations():
 
 
 # ===========================================================================
-# Group D — resolve_aux_model Gemini route (the gemini-3.1-flash-lite-preview fix)
+# Group D, resolve_aux_model Gemini route (the gemini-3.1-flash-lite-preview fix)
 # ===========================================================================
 
 
@@ -464,11 +464,11 @@ async def test_resolve_aux_model_openrouter_primary_prefers_or():
 @pytest.mark.asyncio
 async def test_resolve_aux_model_openrouter_priority_after_subs():
     """In the default cascade (no primary_api), Claude/Codex/Gemini subs
-    win over OR — OR is metered while subs are sub-covered free."""
+    win over OR, OR is metered while subs are sub-covered free."""
     from backend.apps.agents.providers import registry
     from backend.apps.settings.models import AppSettings
     settings = AppSettings()
-    # Both Codex and OR connected — Codex (free via sub) should win.
+    # Both Codex and OR connected, Codex (free via sub) should win.
     with patch("backend.apps.nine_router.is_running", return_value=True), \
          patch("backend.apps.nine_router.get_providers",
                new=AsyncMock(return_value=[
@@ -480,7 +480,7 @@ async def test_resolve_aux_model_openrouter_priority_after_subs():
 
 
 # ===========================================================================
-# Group E — 9Router-streamed 401 detection
+# Group E, 9Router-streamed 401 detection
 # ===========================================================================
 # 9Router sometimes returns upstream auth failures AS the assistant's
 # reply text, not as an exception. We detect the pattern in the stream
@@ -520,7 +520,7 @@ def test_router_auth_pattern_does_not_falsely_match_normal_text():
         "Here are your recent emails: ...",
         "I found 3 results for your search.",
         "Sorry, I don't have access to that file.",
-        "401 Unauthorized — wait this is a code example I'm explaining",  # tricky
+        "401 Unauthorized, wait this is a code example I'm explaining",  # tricky
     ]
     for text in benign_replies:
         lower = text.lower()
@@ -570,7 +570,7 @@ def test_is_auth_error_with_stderr_tail():
 
 
 # ===========================================================================
-# Group F — MCP_SERVER_BRAND coverage
+# Group F, MCP_SERVER_BRAND coverage
 # ===========================================================================
 # Every server slug we surface to the user via MCPSearch / connected_servers
 # should have a brand entry, otherwise the UI falls back to the kebab-case
@@ -628,7 +628,7 @@ def test_sanitize_server_name_strips_special_chars():
 
 
 # ===========================================================================
-# Group G — mcp_meta_server activation backend handler
+# Group G, mcp_meta_server activation backend handler
 # ===========================================================================
 
 
@@ -649,8 +649,8 @@ def test_mcp_activate_handler_unknown_server():
 
 
 def test_active_mcps_persistence_on_session():
-    """active_mcps survives session.model_dump() round-trip — critical for resume."""
-    from backend.apps.agents.models import AgentSession
+    """active_mcps survives session.model_dump() round-trip, critical for resume."""
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.active_mcps = ["gmail", "slack"]
     dumped = json.dumps(s.model_dump(mode="json"))
@@ -659,7 +659,7 @@ def test_active_mcps_persistence_on_session():
 
 
 # ===========================================================================
-# Group H — long-context error classifier
+# Group H, long-context error classifier
 # ===========================================================================
 
 
@@ -704,7 +704,7 @@ def test_long_context_does_not_match_normal_429():
 
 
 # ===========================================================================
-# Group I — Mode reconciliation (regression guard)
+# Group I, Mode reconciliation (regression guard)
 # ===========================================================================
 
 
@@ -719,7 +719,7 @@ def test_chat_mode_not_in_builtins():
 
 def test_active_mcps_default_factory_creates_new_list():
     """Defaults must use Field(default_factory=list), not [], to avoid shared mutation."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s1 = AgentSession(id="a", name="a", model="sonnet", mode="agent")
     s2 = AgentSession(id="b", name="b", model="sonnet", mode="agent")
     s1.active_mcps.append("gmail")
@@ -727,7 +727,7 @@ def test_active_mcps_default_factory_creates_new_list():
 
 
 # ===========================================================================
-# Group J — Concurrent gate stress (real production risk: simultaneous turns)
+# Group J, Concurrent gate stress (real production risk: simultaneous turns)
 # ===========================================================================
 
 
@@ -753,19 +753,19 @@ async def test_concurrent_gate_calls_isolated():
 
 
 # ===========================================================================
-# Group K — pending_continuation auto-restart
+# Group K, pending_continuation auto-restart
 # ===========================================================================
 
 
 def test_pending_continuation_default_false():
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     assert s.pending_continuation is False
     assert s.pending_continuation_prompt is None
 
 
 def test_pending_continuation_serializes():
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.pending_continuation = True
     s.pending_continuation_prompt = "[mcp:auto-continue] retry now"
@@ -776,8 +776,8 @@ def test_pending_continuation_serializes():
 
 
 def test_compact_threshold_default():
-    """compact_threshold_pct default of 0.65 — drift here breaks Phase 2 compaction."""
-    from backend.apps.agents.models import AgentSession
+    """compact_threshold_pct default of 0.65, drift here breaks Phase 2 compaction."""
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     assert s.compact_threshold_pct == 0.65
     assert s.context_soft_cap_pct == 0.90
@@ -785,7 +785,7 @@ def test_compact_threshold_default():
 
 
 # ===========================================================================
-# Group L — Sentence-case display (the parseMcpToolName fix)
+# Group L, Sentence-case display (the parseMcpToolName fix)
 # ===========================================================================
 # This is technically a frontend behavior, but we mirror the rule in
 # Python so the backend's MCPSearch results don't leak Title Case either.
@@ -808,7 +808,7 @@ def test_sentence_case_rule():
 
 
 # ===========================================================================
-# Group M — Bash command verb extraction (frontend logic, mirrored)
+# Group M, Bash command verb extraction (frontend logic, mirrored)
 # ===========================================================================
 
 
@@ -849,7 +849,7 @@ def test_bash_command_detail_path_basename():
 
 
 # ===========================================================================
-# Group N — Pydantic AppSettings invariants
+# Group N, Pydantic AppSettings invariants
 # ===========================================================================
 
 
@@ -875,7 +875,7 @@ def test_custom_provider_round_trip():
 
 
 # ===========================================================================
-# Group O — Tool gate stress with denied permissions
+# Group O, Tool gate stress with denied permissions
 # ===========================================================================
 
 
@@ -908,7 +908,7 @@ async def test_gate_handles_missing_refresh_token_gracefully():
 
 
 # ===========================================================================
-# Group P — resolve_aux_model failover logic
+# Group P, resolve_aux_model failover logic
 # ===========================================================================
 
 
@@ -954,7 +954,7 @@ async def test_aux_returns_sonnet_when_preferred_tier_set():
 
 
 # ===========================================================================
-# Group Q — get_api_type / model id resolution
+# Group Q, get_api_type / model id resolution
 # ===========================================================================
 
 
@@ -978,7 +978,7 @@ def test_find_builtin_model_returns_dict_for_known():
 
 
 # ===========================================================================
-# Group R — context window
+# Group R, context window
 # ===========================================================================
 
 
@@ -999,7 +999,7 @@ def test_apply_context_window_overwrites_default_for_opus_4_7():
     dataclass default for every model. _apply_context_window must pull
     the real 1M value from the registry for opus-4-7 / sonnet so the
     soft-cap trim and the % meter both reflect the real model cap."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     from backend.apps.agents.agent_manager import _apply_context_window
     s = AgentSession(id="x", name="t", model="opus-4-7", mode="agent")
     assert s.context_window == 200_000
@@ -1017,7 +1017,7 @@ def test_apply_context_window_silent_on_unknown_model():
     """Bad lookup must NEVER raise; sessions with unknown/custom models
     that aren't in the registry fall back to the 128k registry default
     without breaking session creation."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     from backend.apps.agents.agent_manager import _apply_context_window
     s = AgentSession(id="x", name="t", model="nonexistent-model-xyz", mode="agent")
     _apply_context_window(s)
@@ -1036,7 +1036,7 @@ def test_estimate_pdf_tokens_takes_max_of_pages_and_bytes():
     """An image-heavy PDF with low page count should still report high
     tokens via the byte-size signal; we never under-report."""
     from backend.apps.settings.settings import _estimate_pdf_tokens
-    # 8MB PDF with 1 page (image-heavy) — byte heuristic should dominate.
+    # 8MB PDF with 1 page (image-heavy), byte heuristic should dominate.
     fake = b"%PDF-1.4\n/Type /Pages /Count 1\n" + b"X" * (8 * 1024 * 1024)
     tokens = _estimate_pdf_tokens(fake)
     # byte heuristic: 8MB / 80 = 100k tokens > pages * 750 = 750
@@ -1237,7 +1237,7 @@ def test_resolve_attachments_uses_os_path_basename_for_windows_paths():
 
 def test_sniff_file_kind_consistent_across_platforms():
     """The sniffer reads bytes, never paths. So platform doesn't matter
-    for the classification logic — same bytes → same kind on Windows/Mac/Linux."""
+    for the classification logic, same bytes → same kind on Windows/Mac/Linux."""
     from backend.apps.settings.settings import _sniff_file_kind
     assert _sniff_file_kind(b"%PDF-1.4\n", "x.pdf") == ("pdf", "application/pdf")
     assert _sniff_file_kind(b"\x89PNG\r\n\x1a\n", "x.png") == ("image", "image/png")
@@ -1317,7 +1317,7 @@ def test_gemini_proxy_rewrites_document_to_openai_image_url_for_9router():
     Anthropic-shape image/document blocks get stringified. We rewrite to
     OpenAI image_url with data: URL so 9router emits Gemini inlineData."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_gemini
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_gemini
     body = json.dumps({
         "model": "gemini-3.1-pro-preview",
         "messages": [{
@@ -1343,7 +1343,7 @@ def test_gemini_proxy_also_rewrites_anthropic_image_blocks_to_image_url():
     """Same fix applies to plain images: Anthropic image → OpenAI image_url
     with data: URL, so 9router's filter preserves it instead of stringifying."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_gemini
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_gemini
     body = json.dumps({
         "model": "gemini-3-pro-preview",
         "messages": [{
@@ -1404,7 +1404,7 @@ def test_gemini_translated_block_matches_9router_image_url_filter():
     (it stringifies any other shape). Our translator must emit exactly that
     shape for PDFs and images both."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_gemini
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_gemini
     body = json.dumps({
         "model": "gemini-3.1-pro-preview",
         "messages": [{"role": "user", "content": [
@@ -1428,7 +1428,7 @@ def test_openrouter_plugin_array_matches_docs():
     at the top level. Engines: pdf-text (free, deprecated → cloudflare),
     mistral-ocr ($2/1k pages), native (model-supported)."""
     import json
-    from backend.apps.agents.anthropic_proxy import _inject_openrouter_file_parser
+    from backend.apps.agents.proxy.anthropic_proxy import _inject_openrouter_file_parser
     body = json.dumps({
         "model": "openrouter/qwen/qwen-2.5-72b-instruct",
         "messages": [{"role": "user", "content": [
@@ -1449,11 +1449,11 @@ def test_openrouter_plugin_array_matches_docs():
 
 def test_openai_translated_image_block_matches_image_url_data_uri():
     """OpenAI's image_url accepts data: URIs only for image/* mime types
-    (verified May 2026 — application/pdf returns HTTP 400). The
+    (verified May 2026, application/pdf returns HTTP 400). The
     translator rewrites Anthropic image blocks; document blocks are
     refused upstream in agent_manager."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_openai_gpt5
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_openai_gpt5
     body = json.dumps({
         "model": "gpt-5.5",
         "max_tokens": 100,
@@ -1475,7 +1475,7 @@ def test_openai_proxy_rewrites_image_block_only_documents_pass_through():
     """OpenAI image_url only accepts image/* mime; documents are refused
     upstream. Translator handles images, leaves documents untouched."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_openai_gpt5
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_openai_gpt5
     body = json.dumps({
         "model": "gpt-5.5",
         "max_tokens": 500,
@@ -1503,7 +1503,7 @@ def test_openai_proxy_rewrites_image_block_only_documents_pass_through():
 def test_openai_proxy_skips_rewrite_when_no_document():
     """Pure text turn on GPT-5 should only get the max_tokens rename."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_openai_gpt5
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_openai_gpt5
     body = json.dumps({
         "model": "gpt-5.5",
         "max_tokens": 100,
@@ -1519,7 +1519,7 @@ def test_openai_proxy_defensive_on_malformed_document_blocks():
     through untouched so the upstream returns a proper error rather
     than us silently dropping the file."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_openai_gpt5
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_openai_gpt5
     body = json.dumps({
         "model": "gpt-5.5",
         "messages": [{
@@ -1579,7 +1579,7 @@ def test_openrouter_proxy_injects_file_parser_plugin_when_document_present():
     """OR's universal-PDF feature requires top-level plugins:[{id:file-parser,...}].
     When a document block is in the request bound for OR, inject it."""
     import json
-    from backend.apps.agents.anthropic_proxy import _inject_openrouter_file_parser
+    from backend.apps.agents.proxy.anthropic_proxy import _inject_openrouter_file_parser
     body = json.dumps({
         "model": "openrouter/qwen/qwen-2.5-72b-instruct",
         "messages": [{
@@ -1605,7 +1605,7 @@ def test_openrouter_proxy_skips_plugin_when_no_document():
     """No document block → don't inject the plugin (costs nothing, but
     keeps the request body clean)."""
     import json
-    from backend.apps.agents.anthropic_proxy import _inject_openrouter_file_parser
+    from backend.apps.agents.proxy.anthropic_proxy import _inject_openrouter_file_parser
     body = json.dumps({
         "model": "openrouter/qwen/qwen-2.5-72b-instruct",
         "messages": [{"role": "user", "content": "just a question"}],
@@ -1617,7 +1617,7 @@ def test_openrouter_proxy_skips_plugin_when_no_document():
 def test_openrouter_proxy_dedupes_existing_file_parser_plugin():
     """If a caller already provided file-parser, don't duplicate it."""
     import json
-    from backend.apps.agents.anthropic_proxy import _inject_openrouter_file_parser
+    from backend.apps.agents.proxy.anthropic_proxy import _inject_openrouter_file_parser
     body = json.dumps({
         "model": "openrouter/qwen/qwen-2.5-72b-instruct",
         "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
@@ -1639,7 +1639,7 @@ def test_gemini_proxy_defensive_on_malformed_blocks():
     must NOT be rewritten; they pass through so the upstream sees the
     error rather than a silently-corrupted block."""
     import json
-    from backend.apps.agents.anthropic_proxy import _scrub_request_for_gemini
+    from backend.apps.agents.proxy.anthropic_proxy import _scrub_request_for_gemini
     body = json.dumps({
         "model": "gemini-3.1-pro-preview",
         "messages": [{
@@ -1702,7 +1702,7 @@ def test_bypass_estimate_body_bytes_sums_image_url_and_file_blocks():
     """The size estimator must sum payload bytes across BOTH content
     types the translator emits (image_url with data: URL, file with
     file_data) so the pre-flight reject can fire before httpx serializes."""
-    from backend.apps.agents.anthropic_to_openai import _estimate_body_bytes
+    from backend.apps.agents.proxy.anthropic_to_openai import _estimate_body_bytes
     body = {"messages": [{"role": "user", "content": [
         {"type": "text", "text": "hi"},
         {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJDRA=="}},  # 8 bytes b64
@@ -1715,7 +1715,7 @@ def test_bypass_concurrency_semaphore_serializes_excess_requests():
     """The semaphore caps in-flight bypass requests to prevent OOM. Cap=2
     means a third concurrent request waits rather than allocating another
     ~40MB buffer."""
-    from backend.apps.agents.anthropic_to_openai import _bypass_sema, _BYPASS_CONCURRENCY
+    from backend.apps.agents.proxy.anthropic_to_openai import _bypass_sema, _BYPASS_CONCURRENCY
     assert _BYPASS_CONCURRENCY == 2
     # Initial value matches the cap (no in-flight at import time).
     assert _bypass_sema._value == _BYPASS_CONCURRENCY
@@ -1724,7 +1724,7 @@ def test_bypass_concurrency_semaphore_serializes_excess_requests():
 def test_anthropic_to_openai_should_bypass_fires_for_gpt5_pdf():
     """The bypass only fires for: GPT-5.x non-codex + has document block
     + openai_api_key set. Misses any of those: 9router path."""
-    from backend.apps.agents.anthropic_to_openai import should_bypass_9router
+    from backend.apps.agents.proxy.anthropic_to_openai import should_bypass_9router
     body = {"model": "gpt-5.5", "messages": [{"role": "user", "content": [
         {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "x"}},
     ]}]}
@@ -1740,7 +1740,7 @@ def test_anthropic_to_openai_should_bypass_fires_for_gpt5_pdf():
 
 def test_anthropic_to_openai_request_translation_shape():
     """Translator must produce a valid OpenAI Chat Completions body."""
-    from backend.apps.agents.anthropic_to_openai import translate_request
+    from backend.apps.agents.proxy.anthropic_to_openai import translate_request
     body = {
         "model": "gpt-5.5",
         "max_tokens": 200,
@@ -1912,7 +1912,7 @@ def test_apply_context_window_respects_custom_provider_value():
     """Custom OpenAI-compatible models supply their own context_window
     via settings.custom_providers. _apply_context_window must look them
     up the same way get_context_window does."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     from backend.apps.agents.agent_manager import _apply_context_window
     from backend.apps.settings.models import AppSettings, CustomProvider
     s = AgentSession(id="x", name="t", provider="custom", model="custom/ollama/qwen2.5:7b", mode="agent")
@@ -2000,7 +2000,7 @@ def test_get_context_window_custom_provider_value_format():
 
 
 def test_custom_provider_slug_is_url_safe():
-    """The slug must be alnum-and-dash only — it's used both as the 9Router
+    """The slug must be alnum-and-dash only, it's used both as the 9Router
     prefix and as a URL path segment. Spaces, slashes, and special chars
     must all be folded to dashes."""
     from backend.apps.agents.providers.registry import _custom_provider_slug_for_lookup
@@ -2031,7 +2031,7 @@ def test_custom_provider_slug_does_not_collide_with_routing_prefixes():
     assert entry is not None
     routed = entry["model_id"]
     assert routed == "cp-cc/whatever"
-    # cp-cc is NOT cc/ — startswith check would have to match the exact slash.
+    # cp-cc is NOT cc/, startswith check would have to match the exact slash.
     assert not routed.startswith(("cc/", "cx/", "gc/", "ag/", "gemini/", "openrouter/"))
 
 
@@ -2059,7 +2059,7 @@ def test_custom_provider_models_with_special_chars():
 
 def test_custom_provider_value_with_invalid_format_returns_none():
     """Malformed picker values (no slug, no model) must not synthesise a
-    bogus entry — they should miss _find_builtin_model entirely so the
+    bogus entry, they should miss _find_builtin_model entirely so the
     dispatch loop falls through to the 'unknown model' branch."""
     from backend.apps.agents.providers.registry import _find_builtin_model
     assert _find_builtin_model("custom/") is None
@@ -2068,7 +2068,7 @@ def test_custom_provider_value_with_invalid_format_returns_none():
 
 
 def test_custom_provider_get_api_type_returns_custom():
-    """get_api_type drives the dispatch branch in agent_manager.py — must
+    """get_api_type drives the dispatch branch in agent_manager.py, must
     return 'custom' (not 'anthropic' default fallback) for a custom value."""
     from backend.apps.agents.providers.registry import get_api_type
     assert get_api_type("custom/ollama/gpt-oss:120b") == "custom"
@@ -2122,7 +2122,7 @@ def test_custom_provider_get_anthropic_client_routes_cp_to_9router():
 
 def test_custom_provider_two_providers_get_distinct_slugs():
     """Two custom providers with different display names must produce
-    two different slugs / routing prefixes — otherwise 9Router will route
+    two different slugs / routing prefixes, otherwise 9Router will route
     both to whichever connection was created last."""
     from backend.apps.agents.providers.registry import _custom_provider_slug_for_lookup
     a = _custom_provider_slug_for_lookup("Ollama Cloud")
@@ -2137,7 +2137,7 @@ def test_custom_provider_slug_collision_after_sanitize():
     The dedupe-by-name UI check guards against same-string entries; this
     test just documents that post-slug collisions DO collide and the
     UI-level uniqueness check (in Settings.tsx) is the right enforcement
-    layer — backend resolution would always pick the first match."""
+    layer, backend resolution would always pick the first match."""
     from backend.apps.agents.providers.registry import _custom_provider_slug_for_lookup
     assert _custom_provider_slug_for_lookup("Ollama Cloud") == \
            _custom_provider_slug_for_lookup("ollama-cloud") == \
@@ -2155,22 +2155,22 @@ def test_list_models_includes_complete_custom_providers_excludes_incomplete():
     from unittest.mock import patch
 
     cfg = AppSettings(custom_providers=[
-        # Complete — should appear.
+        # Complete, should appear.
         CustomProvider(
             name="Ollama Cloud", base_url="https://ollama.com/v1", api_key="x",
             models=[{"value": "gpt-oss:120b", "label": "gpt-oss:120b"}],
         ),
-        # Empty base_url — should NOT appear.
+        # Empty base_url, should NOT appear.
         CustomProvider(
             name="Broken", base_url="", api_key="y",
             models=[{"value": "model-a", "label": "model-a"}],
         ),
-        # No models — should NOT appear.
+        # No models, should NOT appear.
         CustomProvider(
             name="Empty", base_url="https://example.com/v1", api_key="z",
             models=[],
         ),
-        # Empty name — should NOT appear.
+        # Empty name, should NOT appear.
         CustomProvider(
             name="", base_url="https://example.com/v1", api_key="z",
             models=[{"value": "x", "label": "x"}],
@@ -2253,7 +2253,7 @@ def test_custom_provider_context_window_falls_back_to_default():
 
 def test_custom_provider_resolve_aux_model_unaffected():
     """resolve_aux_model is the one-shot LLM call path. Custom providers
-    are NOT in its decision tree — Haiku/9Router/OR fallbacks should still
+    are NOT in its decision tree, Haiku/9Router/OR fallbacks should still
     fire. Custom providers are deliberately not used for aux because we
     don't know if they support tool calling well enough."""
     import asyncio
@@ -2282,14 +2282,14 @@ def test_custom_provider_with_very_long_name_still_works():
 
 
 # ===========================================================================
-# 9Router sync stress tests — async, mocked HTTP layer
+# 9Router sync stress tests, async, mocked HTTP layer
 # ===========================================================================
 
 
 def _make_mock_9router(initial_nodes=None, initial_conns=None, fail_endpoints=None):
     """Build a mock httpx.AsyncClient that simulates 9Router's HTTP API.
     Tracks state across requests so we can assert idempotency.
-    Returns (mock_client_class, state_dict) — state_dict is mutated by calls."""
+    Returns (mock_client_class, state_dict), state_dict is mutated by calls."""
     from unittest.mock import AsyncMock, MagicMock
     state = {
         "nodes": list(initial_nodes or []),
@@ -2523,7 +2523,7 @@ def test_sync_custom_providers_deletes_orphaned_managed_nodes():
             "prefix": "cp-oldprovider",
             "type": "openai-compatible",
         },
-        # An UNMANAGED node — should never be deleted.
+        # An UNMANAGED node, should never be deleted.
         {
             "id": "node-user-created",
             "name": "Manual Setup",   # no suffix
@@ -2569,7 +2569,7 @@ def test_sync_custom_providers_skips_incomplete_entries():
 
 def test_sync_custom_providers_handles_node_post_failure_without_crashing():
     """If 9Router rejects the node POST (e.g. duplicate prefix), don't
-    crash the whole sync — log and move on to the next provider."""
+    crash the whole sync, log and move on to the next provider."""
     import asyncio
     from unittest.mock import patch as upatch
     from backend.apps.nine_router import sync_custom_providers
@@ -2623,32 +2623,7 @@ def _async_return(value):
 
 
 # ===========================================================================
-# Group S — calculate_cost regression tests
-# ===========================================================================
-
-
-def test_calculate_cost_anthropic_sonnet():
-    """Sonnet $3/M input + $15/M output."""
-    from backend.apps.agents.providers.registry import calculate_cost
-    # 1M input, 1M output → $18 expected (3 + 15)
-    cost = calculate_cost("Anthropic", "sonnet", 1_000_000, 1_000_000)
-    assert 17 <= cost <= 19
-
-
-def test_calculate_cost_zero_tokens():
-    from backend.apps.agents.providers.registry import calculate_cost
-    cost = calculate_cost("Anthropic", "sonnet", 0, 0)
-    assert cost == 0.0
-
-
-def test_calculate_cost_unknown_model_returns_zero():
-    from backend.apps.agents.providers.registry import calculate_cost
-    cost = calculate_cost("Unknown", "fake", 1000, 1000)
-    assert cost == 0.0
-
-
-# ===========================================================================
-# Group T — Mode definitions
+# Group T, Mode definitions
 # ===========================================================================
 
 
@@ -2681,7 +2656,7 @@ def test_view_builder_mode_has_default_folder():
 
 
 # ===========================================================================
-# Group U — Stress: gate handles 100 sequential calls without state leak
+# Group U, Stress: gate handles 100 sequential calls without state leak
 # ===========================================================================
 
 
@@ -2702,7 +2677,7 @@ async def test_gate_100_sequential_calls_no_leak():
 
 
 # ===========================================================================
-# Group V — Discord shim entrypoint sanity
+# Group V, Discord shim entrypoint sanity
 # ===========================================================================
 
 
@@ -2719,7 +2694,7 @@ def test_discord_shim_package_importable():
 
 
 # ===========================================================================
-# Group W — Tools/web.py (live MCP for DDG search)
+# Group W, Tools/web.py (live MCP for DDG search)
 # ===========================================================================
 
 
@@ -2745,12 +2720,12 @@ def test_web_fetch_tool_has_name_and_schema():
 
 
 # ===========================================================================
-# Group X — ToolGroupMeta + caching
+# Group X, ToolGroupMeta + caching
 # ===========================================================================
 
 
 def test_tool_group_meta_round_trip():
-    from backend.apps.agents.models import ToolGroupMeta, AgentSession
+    from backend.apps.agents.core.models import ToolGroupMeta, AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.tool_group_meta["g1"] = ToolGroupMeta(id="g1", name="Reading files", svg="<svg/>", is_refined=True)
     d = s.model_dump(mode="json")
@@ -2760,25 +2735,25 @@ def test_tool_group_meta_round_trip():
 
 
 def test_tool_group_meta_default_is_refined_false():
-    from backend.apps.agents.models import ToolGroupMeta
+    from backend.apps.agents.core.models import ToolGroupMeta
     m = ToolGroupMeta(id="g", name="x")
     assert m.is_refined is False
 
 
 # ===========================================================================
-# Group Y — MessageBranch invariants
+# Group Y, MessageBranch invariants
 # ===========================================================================
 
 
 def test_session_has_main_branch_by_default():
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     assert "main" in s.branches
     assert s.active_branch_id == "main"
 
 
 def test_branch_serialization():
-    from backend.apps.agents.models import AgentSession, MessageBranch
+    from backend.apps.agents.core.models import AgentSession, MessageBranch
     s = AgentSession(id="x", name="t", model="sonnet", mode="agent")
     s.branches["alt"] = MessageBranch(id="alt", parent_branch_id="main", fork_point_message_id="msg-1")
     d = s.model_dump(mode="json")
@@ -2788,7 +2763,7 @@ def test_branch_serialization():
 
 
 # ===========================================================================
-# Group Z — End-to-end: realistic session lifecycle
+# Group Z, End-to-end: realistic session lifecycle
 # ===========================================================================
 
 
@@ -2796,13 +2771,13 @@ def test_branch_serialization():
 async def test_e2e_session_lifecycle_with_mcp_activation():
     """
     Walk a session through the realistic flow:
-      1. Fresh session (active_mcps empty) — gate blocks all MCPs
-      2. MCPActivate('gmail') — set fresh_session, append to active_mcps
-      3. Continue turn — gate now passes gmail through
-      4. Persist & re-load — state survives
+      1. Fresh session (active_mcps empty), gate blocks all MCPs
+      2. MCPActivate('gmail'), set fresh_session, append to active_mcps
+      3. Continue turn, gate now passes gmail through
+      4. Persist & re-load, state survives
     """
     from backend.apps.agents.agent_manager import AgentManager
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     fake_tools = [_fake_tool("Gmail"), _fake_tool("Slack")]
     with patch("backend.apps.agents.agent_manager.load_all_tools", return_value=fake_tools), \
          patch("backend.apps.agents.agent_manager.refresh_google_token", new=AsyncMock(return_value=True)):
@@ -2823,7 +2798,7 @@ async def test_e2e_session_lifecycle_with_mcp_activation():
             s.needs_fresh_session = True
         s.pending_continuation = True
 
-        # Step 3: continuation turn — gate passes gmail
+        # Step 3: continuation turn, gate passes gmail
         result = await mgr._build_mcp_servers(
             allowed_tools=["mcp:Gmail", "mcp:Slack"],
             active_mcps=s.active_mcps,
@@ -2863,14 +2838,14 @@ async def test_e2e_50_random_activation_sequences():
 def test_session_agent_active_ms_default_zero_for_legacy():
     """A session loaded from JSON without `agent_active_ms` deserializes
     cleanly with default 0 (not None, not missing-key crash)."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(name="legacy", model="sonnet", mode="agent")
     assert s.agent_active_ms == 0
     assert s.time_per_model == {}
 
 
 def test_session_agent_active_ms_round_trip():
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(name="t", model="sonnet", mode="agent",
                      agent_active_ms=12345, time_per_model={"haiku": 1000, "sonnet": 11345})
     d = s.model_dump(mode="json")
@@ -2880,9 +2855,9 @@ def test_session_agent_active_ms_round_trip():
 
 
 def test_session_agent_active_ms_accumulates_via_dict_update():
-    """Simulates two turns adding to the bucket — the production accumulator
+    """Simulates two turns adding to the bucket, the production accumulator
     pattern in agent_manager._on_result."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(name="t", model="sonnet", mode="agent")
     s.agent_active_ms = (s.agent_active_ms or 0) + 1500
     s.time_per_model[s.model] = int(s.time_per_model.get(s.model, 0)) + 1500
@@ -2893,9 +2868,9 @@ def test_session_agent_active_ms_accumulates_via_dict_update():
 
 
 def test_session_time_per_model_records_switch():
-    """Simulates a model switch mid-session — each model accumulates its
+    """Simulates a model switch mid-session, each model accumulates its
     own bucket."""
-    from backend.apps.agents.models import AgentSession
+    from backend.apps.agents.core.models import AgentSession
     s = AgentSession(name="t", model="haiku", mode="agent")
     # Turn 1 on haiku
     s.time_per_model[s.model] = int(s.time_per_model.get(s.model, 0)) + 1200

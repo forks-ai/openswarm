@@ -118,8 +118,10 @@ def test_modes_load_all_skips_corrupt(tmp_path, monkeypatch):
 
 def test_outputs_load_all_skips_corrupt(tmp_path, monkeypatch):
     from backend.apps.outputs import outputs as omod
+    from backend.apps.outputs import workspace_io as wio
     from backend.apps.outputs.models import Output
-    monkeypatch.setattr(omod, "DATA_DIR", str(tmp_path))
+    # _load_all/_save live in workspace_io after the structure refactor; patch where they read DATA_DIR.
+    monkeypatch.setattr(wio, "DATA_DIR", str(tmp_path))
     omod._save(Output(name="good"))
     (tmp_path / "garbled.json").write_text("nope")
     loaded = omod._load_all()

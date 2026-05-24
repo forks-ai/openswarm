@@ -41,17 +41,17 @@ import {
 } from '@/shared/state/agentsSlice';
 import { fetchModes } from '@/shared/state/modesSlice';
 import { createSessionWs } from '@/shared/ws/WebSocketManager';
-import StreamingBubble from './StreamingBubble';
-import MessageBubble from './MessageBubble';
-import CompactionMarker from './CompactionMarker';
-import MessageActionBar from './MessageActionBar';
-import ToolCallBubble, { ToolPair } from './ToolCallBubble';
-import ToolGroupBubble, { RenderItem, ToolGroup, isToolGroup, isToolPair } from './ToolGroupBubble';
-import ApprovalBar, { BatchApprovalBar } from './ApprovalBar';
+import StreamingBubble from './bubbles/StreamingBubble';
+import MessageBubble from './bubbles/MessageBubble';
+import CompactionMarker from './bubbles/CompactionMarker';
+import MessageActionBar from './shell/MessageActionBar';
+import ToolCallBubble, { ToolPair } from './tool-bubbles/ToolCallBubble';
+import ToolGroupBubble, { RenderItem, ToolGroup, isToolGroup, isToolPair } from './tool-bubbles/ToolGroupBubble';
+import ApprovalBar, { BatchApprovalBar } from './shell/ApprovalBar';
 import ChatInput, { ChatInputHandle } from './ChatInput';
-import ContextDrawer from './ContextDrawer';
-import { ErrorSlime } from '@/app/components/ErrorSlime';
-import { ContextPath } from '@/app/components/DirectoryBrowser';
+import ContextDrawer from './shell/ContextDrawer';
+import { ErrorSlime } from '@/app/components/feedback/ErrorSlime';
+import { ContextPath } from '@/app/components/editor/DirectoryBrowser';
 import { setGlowingBrowserCards, fadeGlowingBrowserCards, clearGlowingBrowserCards } from '@/shared/state/dashboardLayoutSlice';
 import { useClaudeTokens } from '@/shared/styles/ThemeContext';
 
@@ -225,7 +225,7 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
     // events starting at last_seq=0, which includes every stream_*
     // event for messages that finished before the disconnect. The
     // replay-skip guard in WebSocketManager._messageAlreadyComplete
-    // checks `session.messages` to decide whether to drop deltas — so
+    // checks `session.messages` to decide whether to drop deltas , so
     // if we connect first, the slice is empty when the replay arrives,
     // the guard returns false, and the user sees the chat type itself
     // out again. Awaiting fetchSession before connect makes the slice
@@ -234,7 +234,7 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
       try {
         await dispatch(fetchSession(id));
       } catch {
-        // Even if the REST hydrate fails, still connect — the WS resume
+        // Even if the REST hydrate fails, still connect , the WS resume
         // protocol can hydrate from buffered events as a fallback.
       }
       if (cancelled) return;
@@ -885,7 +885,7 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
                     if (!(session.cost_usd > 0)) return null;
                     // The SDK reports a per-call $ figure regardless of how
                     // the request was routed. For requests that went through
-                    // a subscription path, that figure is misleading — the
+                    // a subscription path, that figure is misleading , the
                     // user pays flat-rate. Show "subscription" instead in
                     // those cases. Show $ only when the call was actually
                     // metered (Anthropic API key, OpenAI API key, etc.).
@@ -919,7 +919,7 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
                         <Typography
                           variant="caption"
                           sx={{ color: c.text.tertiary }}
-                          title="Routed through subscription — flat-rate, per-call cost not metered"
+                          title="Routed through subscription, flat-rate, per-call cost not metered"
                         >
                           subscription
                         </Typography>
@@ -1021,18 +1021,18 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
               overflow: 'auto',
               px: 2,
               py: 1,
-              // Smoothness bundle (perf-only — no behavior change):
-              //   1. overflow-anchor: auto — Chromium's native scroll
+              // Smoothness bundle (perf-only , no behavior change):
+              //   1. overflow-anchor: auto , Chromium's native scroll
               //      anchoring keeps the viewport pinned to the user's
               //      visible content as siblings above/below resize.
               //      Eliminates the "transcript snaps back" feel during
               //      streaming and parallel tool fan-outs. Runs on the
               //      compositor thread, free.
-              //   2. contain: layout — tells the browser layout shifts
+              //   2. contain: layout , tells the browser layout shifts
               //      inside this scroll container don't affect siblings
               //      outside it. Prevents reflow from cascading up to
               //      the dashboard layout when bubbles grow.
-              //   3. overscroll-behavior: contain — keeps over-scroll
+              //   3. overscroll-behavior: contain , keeps over-scroll
               //      gestures from leaking up to the dashboard pan/zoom
               //      when the user hits the chat top/bottom.
               overflowAnchor: 'auto',
@@ -1657,7 +1657,7 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
                         Haiku is the fastest Claude model but holds the least at once.
                         Each connected app adds instructions Claude has to read first.
                         If your message fails with “Prompt is too long,” turn off a few
-                        apps (Microsoft 365 is the heaviest) or switch to Sonnet/Opus —
+                        apps (Microsoft 365 is the heaviest) or switch to Sonnet/Opus,
                         both have 5× more room.
                       </Typography>
                     </Box>
