@@ -100,18 +100,18 @@ const AgenticCursor = forwardRef<AgenticCursorHandle>((_props, ref) => {
     async moveTo(x, y, transition) {
       // Stop prior tracker so it doesn't snap the cursor back to its old anchor mid-animation.
       stopTrackingInternal();
-      // instant=false so the Windows CSS-transition eases here (mirrors Mac's spring controls.start).
-      writePos(x, y, true, false);
+      // Order matters and is identical to the pre-Windows version on Mac: Framer's spring drives the popup via onUpdate during the animation, then writePos confirms the final position. On Windows controls.start is the shim no-op so this resolves instantly and writePos (instant=false) hands the CSS transition the target to ease toward.
       await controls.start({
         x,
         y,
         transition: transition ?? SPRING,
       });
+      writePos(x, y, true, false);
     },
     async fadeOut(to) {
       stopTrackingInternal();
-      writePos(to.x, to.y, true, false);
       await controls.start({ x: to.x, y: to.y, transition: SPRING });
+      writePos(to.x, to.y, true, false);
       await controls.start({
         opacity: 0,
         scale: 0.5,
