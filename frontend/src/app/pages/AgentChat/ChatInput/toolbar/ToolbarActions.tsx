@@ -30,6 +30,12 @@ export const ToolbarActions: React.FC<Props> = ({
   c, elementSelection, autoRunMode, ownerId, sessionId, generalFileInputRef,
   addImageFiles, uploadAndAttachFiles, hasContent, disabled, isRunning, onStop, handleSend,
 }) => {
+  // eslint-disable-next-line no-console
+  console.log('[diag][ToolbarActions:render]', sessionId, 'isRunning=', isRunning);
+  React.useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[diag][ToolbarActions:committed]');
+  });
   return (
     <>
       {elementSelection && !autoRunMode && (() => {

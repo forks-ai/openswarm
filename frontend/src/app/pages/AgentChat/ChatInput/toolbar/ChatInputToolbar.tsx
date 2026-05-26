@@ -53,6 +53,10 @@ interface Props {
 export const ChatInputToolbar: React.FC<Props> = (p) => {
   // eslint-disable-next-line no-console
   console.log('[diag][ChatInputToolbar:render]', p.sessionId);
+  React.useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[diag][ChatInputToolbar:committed]');
+  });
   const {
     c, modeConf, modesArr, mode, onModeChange, iconMap,
     modeAnchor, setModeAnchor, modelAnchor, setModelAnchor, thinkingAnchor, setThinkingAnchor,
