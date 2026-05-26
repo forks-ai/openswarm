@@ -1,6 +1,6 @@
 {
   "name": "openswarm",
-  "version": "1.1.59",
+  "version": "1.1.60",
   "description": "OpenSwarm — AI Agent Orchestrator",
   "author": "openswarm-ai",
   "main": "main.js",
@@ -68,7 +68,7 @@
       "icon": "build/icon.ico",
       "target": [
         {
-          "target": "squirrel",
+          "target": "nsis",
           "arch": ["x64"]
         }
       ],
@@ -77,8 +77,16 @@
       "signingHashAlgorithms": ["sha256"],
       "signDlls": false
     },
-    "squirrelWindows": {
-      "iconUrl": "https://raw.githubusercontent.com/openswarm-ai/openswarm/main/electron/build/icon.ico"
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenSwarm",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "OpenSwarm-Setup-${arch}.${ext}",
+      "include": "build/installer-recovery.nsh"
     },
     "extraResources": [
       {
