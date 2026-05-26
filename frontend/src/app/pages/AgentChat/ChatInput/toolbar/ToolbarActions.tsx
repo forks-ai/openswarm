@@ -91,8 +91,8 @@ export const ToolbarActions: React.FC<Props> = ({
         );
       })()}
 
-      {/* DIAG: hidden <input type="file"> + attach button commented out for v1.1.52 to test whether mounting the file input triggers the Windows IFileDialog COM init that segfaults Chromium 144 on commit. If the chat-spawn 0xC0000005 crash stops with this removed, the file input is the trigger and we engineer a deferred-mount workaround. */}
-      {false && (
+      {/* Windows-only ablation: hidden <input type="file"> + attach button skipped on Windows to test whether IFileDialog COM init is the trigger for the Chromium 144 commit-phase segfault. Mac still renders both (drag/paste/click attach all work). On Windows, drag-and-drop attach still works via AttachmentChips drop zone. */}
+      {!IS_WIN && (
         <input
           ref={generalFileInputRef}
           type="file"
@@ -109,7 +109,7 @@ export const ToolbarActions: React.FC<Props> = ({
           }}
         />
       )}
-      {false && (
+      {!IS_WIN && (
         <Tooltip title="Attach file">
           <IconButton
             size="small"
