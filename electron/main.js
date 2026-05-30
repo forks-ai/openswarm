@@ -86,7 +86,7 @@ function _removeLegacyNsisInstall() {
     "$ErrorActionPreference='SilentlyContinue';" +
     "$e = Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' |" +
     " ForEach-Object { Get-ItemProperty $_.PSPath } |" +
-    " Where-Object { $_.DisplayName -eq 'OpenSwarm' -and $_.UninstallString -and ($_.UninstallString -notmatch 'Update\\.exe') } |" +
+    " Where-Object { $_.DisplayName -like 'OpenSwarm*' -and $_.UninstallString -and ($_.UninstallString -notmatch 'Update\\.exe') } |" +
     " Select-Object -First 1;" +
     "if ($e) { if ($e.QuietUninstallString) { $u = $e.QuietUninstallString } else { $u = $e.UninstallString + ' /S' };" +
     " Start-Process -FilePath cmd.exe -ArgumentList '/c', $u -WindowStyle Hidden }";
