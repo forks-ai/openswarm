@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Stop'
 if ($Publish) { $Sign = $true }
 # Override only the win target; everything else (signing hook, extraResources,
 # publish config) merges from electron/package.json's build block unchanged.
-$TargetOverride = if ($Squirrel) { @('--config.win.target=squirrel') } else { @() }
+$TargetOverride = if ($Squirrel) { @('--config.win.target=squirrel', '--config.squirrelWindows.iconUrl=https://raw.githubusercontent.com/openswarm-ai/openswarm/main/electron/build/icon.ico') } else { @() }
 
 $ScriptDir   = Split-Path -Parent $PSCommandPath
 $ProjectRoot = Split-Path -Parent $ScriptDir
