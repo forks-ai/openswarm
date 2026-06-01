@@ -621,7 +621,7 @@ async def oauth_cloud_claim(
     tokens = data.get("tokens", {}) or {}
     tool = _load(tool_id)
     # Google's token endpoint doesn't include the user's email; fetch it
-    # from userinfo so the UI can show "you connected ericzeng@gmail.com"
+    # from userinfo so the UI can show "you connected you@gmail.com"
     # rather than the generic "Google account" placeholder.
     if tool.name.lower().startswith("google") and tokens.get("access_token") and not tokens.get("email"):
         try:
