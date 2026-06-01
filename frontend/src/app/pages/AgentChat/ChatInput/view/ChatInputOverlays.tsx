@@ -74,46 +74,48 @@ export const ChatInputOverlays: React.FC<Props> = ({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         sx={{ mb: 10 }}
       >
-        <Alert
-          severity="warning"
-          variant="filled"
-          icon={false}
-          sx={{ alignItems: 'center', maxWidth: 520, fontSize: '0.78rem' }}
-          action={
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <Box
-                component="button"
-                disabled={summarizingPath === oversizeQueue[0]?.path}
-                onClick={() => oversizeQueue[0] && summarizeOversize(oversizeQueue[0].path)}
-                sx={{
-                  background: 'rgba(255,255,255,0.18)', color: 'inherit', border: 'none',
-                  borderRadius: '6px', px: 1, py: 0.5, fontSize: '0.72rem', cursor: 'pointer',
-                  '&:hover': { background: 'rgba(255,255,255,0.28)' },
-                  '&:disabled': { opacity: 0.6, cursor: 'wait' },
-                }}
-              >
-                {summarizingPath === oversizeQueue[0]?.path ? 'Summarizing…' : 'Summarize instead'}
-              </Box>
-              <Box
-                component="button"
-                onClick={() => oversizeQueue[0] && detachOversize(oversizeQueue[0].path)}
-                sx={{
-                  background: 'transparent', color: 'inherit', border: '1px solid rgba(255,255,255,0.4)',
-                  borderRadius: '6px', px: 1, py: 0.5, fontSize: '0.72rem', cursor: 'pointer',
-                  '&:hover': { background: 'rgba(255,255,255,0.12)' },
-                }}
-              >
-                Detach
-              </Box>
-            </Box>
-          }
+        <Box
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 1.5,
+            bgcolor: c.bg.surface, border: `1px solid ${c.border.medium}`,
+            boxShadow: c.shadow.md, borderRadius: '10px',
+            px: 2, py: 1.25, maxWidth: 560,
+          }}
         >
           {oversizeQueue[0] ? (
-            <span>
-              <strong>{oversizeQueue[0].name}</strong> is ~{formatTokenCount(oversizeQueue[0].tokens)} tokens, over 50% of this model's window ({formatTokenCount(currentModelCtx)}). Summarize sends the file content to your configured aux provider.
-            </span>
+            <Box sx={{ color: c.text.primary, fontSize: '0.85rem', lineHeight: 1.4, flex: 1 }}>
+              This file is too big to fit. Want me to shrink it down to a summary, or just remove it?
+            </Box>
           ) : null}
-        </Alert>
+          <Box sx={{ display: 'flex', gap: 0.75, flexShrink: 0 }}>
+            <Box
+              component="button"
+              disabled={summarizingPath === oversizeQueue[0]?.path}
+              onClick={() => oversizeQueue[0] && summarizeOversize(oversizeQueue[0].path)}
+              sx={{
+                bgcolor: c.accent.primary, color: '#fff',
+                border: 'none', borderRadius: '6px',
+                px: 1.5, py: 0.6, fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                '&:hover': { bgcolor: c.accent.hover },
+                '&:disabled': { opacity: 0.6, cursor: 'wait' },
+              }}
+            >
+              {summarizingPath === oversizeQueue[0]?.path ? 'Shrinking…' : 'Shrink it'}
+            </Box>
+            <Box
+              component="button"
+              onClick={() => oversizeQueue[0] && detachOversize(oversizeQueue[0].path)}
+              sx={{
+                bgcolor: 'transparent', color: c.text.secondary,
+                border: `1px solid ${c.border.medium}`, borderRadius: '6px',
+                px: 1.5, py: 0.6, fontSize: '0.8rem', cursor: 'pointer',
+                '&:hover': { bgcolor: c.bg.secondary, color: c.text.primary },
+              }}
+            >
+              Remove
+            </Box>
+          </Box>
+        </Box>
       </Snackbar>
 
       <Snackbar

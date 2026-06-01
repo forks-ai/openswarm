@@ -102,8 +102,11 @@ export function useContextFiles(
       setContextPaths((prev) => prev.map((cp) => cp.path === path ? { ...cp, path: newPath, tokens: newTokens, kind: 'text', media_type: 'text/plain' } : cp));
       setOversizeQueue((q) => q.filter((o) => o.path !== path));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'summarize failed';
-      setSummarizeError(`${msg}. Detach the file or connect an aux provider in Settings.`);
+      // Don't show backend stack traces / model error JSON to users. The raw error
+      // ("Error code: 400 - {'error': {'message': '[claude/...] prompt is too long...'}}")
+      // is logged in console for devs; users see a plain English ask.
+      if (err instanceof Error) console.error('[summarize] failed:', err.message);
+      setSummarizeError('Could not shrink the file. Try removing it, or pick a model with a bigger window in Settings.');
     } finally {
       setSummarizingPath(null);
     }
