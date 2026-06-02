@@ -374,6 +374,9 @@ ACTION_MAP = {
     "BrowserDetectWebMCP": "detect_webmcp",
     "BrowserListRoutes": "list_routes",
     "BrowserReplayRoute": "replay_route",
+    # Internal replay primitive (skill replay calls it directly; not in the
+    # LLM-facing schema). Re-resolves a click target by role+name.
+    "BrowserClickByName": "click_by_name",
 }
 
 SYSTEM_PROMPT = (
