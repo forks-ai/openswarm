@@ -96,7 +96,20 @@ async function handleNavigate(wv: BrowserWebview, params: Record<string, any>): 
   } catch (err: any) {
     if (!err?.message?.includes('ERR_ABORTED')) throw err;
   }
-  return { text: `Navigated to ${url}`, url };
+  // Count the safe GET endpoints captured for this site so the backend can nudge
+  // the agent toward the fast network path (the audit found it's ~0% used).
+  let routesAvailable = 0;
+  try {
+    const bridge = (window as any).openswarm?.cdpRoutesGet as
+      | ((id: number, origin?: string) => Promise<any[]>) | undefined;
+    if (bridge) {
+      let origin = '';
+      try { origin = new URL(wv.getURL()).origin; } catch {}
+      const routes = (await bridge(wv.getWebContentsId(), origin)) || [];
+      routesAvailable = routes.filter((r) => r && r.safe).length;
+    }
+  } catch {}
+  return { text: `Navigated to ${url}`, url, routes_available: routesAvailable };
 }
 
 async function handleClick(wv: BrowserWebview, params: Record<string, any>): Promise<Record<string, any>> {

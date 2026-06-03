@@ -328,6 +328,7 @@ async def run_browser_agent(
     recent_tool_calls: list[tuple[str, str, str]] = []
     loop_trigger_count = 0
     card_gone_streak = 0  # consecutive "card is gone" results -> fail fast, don't spin
+    route_hinted_hosts: set[str] = set()  # surface the fast network tier once per host
 
     # Stagnation state: busy-but-stuck detection (no URL change + failures
     # across a run of actions), distinct from the exact-repeat loop above.
@@ -1020,6 +1021,21 @@ async def run_browser_agent(
                         domain = _extract_domain(str(url))
                         if domain and domain not in session.browser_domains:
                             session.browser_domains.append(domain)
+                except Exception:
+                    pass
+                # The fast tier is ~0% used because the agent never thinks to ask.
+                # Once per host, when safe GET routes have been captured, nudge it:
+                # reading via the API beats re-scraping, especially in a batch loop.
+                try:
+                    _rc = int(result.get("routes_available") or 0)
+                    _rhost = browser_skills.host_of(result.get("url") or last_seen_url)
+                    if _rc > 0 and _rhost and _rhost not in route_hinted_hosts:
+                        route_hinted_hosts.add(_rhost)
+                        content_blocks = content_blocks + [{"type": "text", "text": (
+                            f"\n\n💡 {_rc} of this site's own API endpoint(s) were captured. To READ "
+                            "data (and especially to repeat a read for many items), BrowserReplayRoute "
+                            "(or a replay_route step in BrowserRepeatFlow) is much faster and more "
+                            "reliable than navigating + scraping. See BrowserListRoutes.")}]
                 except Exception:
                     pass
                 if is_loop:

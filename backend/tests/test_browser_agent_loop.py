@@ -902,6 +902,31 @@ def test_batch_replay_uses_the_fast_network_route_per_value(monkeypatch):
     assert any("u=ada" in u for u in routes) and any("u=grace" in u for u in routes)
 
 
+def test_captured_routes_are_surfaced_once_per_host(monkeypatch):
+    # Drives the dead network tier: when safe GET routes exist, the agent gets a
+    # ONE-TIME nudge per host toward BrowserReplayRoute, not on every navigation.
+    BH._browser_history.clear()
+    primary = FakeLLM([
+        Resp([_rp("go 1"), _tu("BrowserNavigate", url="https://docs.google.com/a")]),
+        Resp([_rp("go 2"), _tu("BrowserNavigate", url="https://docs.google.com/b")]),
+        Resp([Blk("text", "done")], stop_reason="end_turn"),
+    ])
+    sent = _install(monkeypatch, primary, FakeAux())
+    orig = BA.ws_manager.send_browser_command
+
+    async def _with_routes(request_id, action, browser_id, params, tab_id=""):
+        if action == "navigate":
+            return {"text": f"Navigated to {params.get('url')}", "url": params.get("url"), "routes_available": 4}
+        return await orig(request_id, action, browser_id, params, tab_id)
+    monkeypatch.setattr(BA.ws_manager, "send_browser_command", _with_routes, raising=False)
+
+    asyncio.run(BA.run_browser_agent(task="browse", browser_id="b1", model="sonnet", initial_url=DOC_URL))
+    # messages are cumulative across calls, so count within ONE call's full
+    # conversation: the nudge must appear exactly once for docs.google.com (not per nav)
+    final_convo = json.dumps(primary.calls[-1]["messages"])
+    assert final_convo.count("API endpoint(s) were captured") == 1
+
+
 def test_browser_wait_routes_through_smart_wait_and_returns_early(monkeypatch):
     # BrowserWait must no longer be a blind sleep: it probes the page (evaluate)
     # and returns as soon as it's settled, well under the requested cap.
