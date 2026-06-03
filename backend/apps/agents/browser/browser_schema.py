@@ -327,11 +327,13 @@ BROWSER_TOOLS_SCHEMA = [
             "speed: zero screenshots, zero extra thinking. Write the steps using "
             "{{value}} wherever the input varies. Each iteration is verified; any "
             "item whose page doesn't match falls back and is reported so you can "
-            "handle it yourself, it never pretends. Use this for SEARCH / READ / "
-            "NAVIGATE loops. It REFUSES irreversible steps (Send, Submit, Connect, "
-            "Post, Pay, Delete, message composers): do those one at a time. For "
-            "reading data, a 'replay_route' step (hit a captured API endpoint) is "
-            "far faster than navigating the UI."
+            "handle it yourself, it never pretends. It HANDS BACK each item's read "
+            "data (the last step's output, capped), keyed by value, so a read loop "
+            "actually delivers ('Read 5 of 5: - ada: ...'). Use this for SEARCH / "
+            "READ / NAVIGATE loops. It REFUSES irreversible steps (Send, Submit, "
+            "Connect, Post, Pay, Delete, message composers): do those one at a time. "
+            "For reading data, a 'replay_route' step (hit a captured API endpoint) is "
+            "far faster and cheaper than navigating the UI per item."
         ),
         "input_schema": {
             "type": "object",

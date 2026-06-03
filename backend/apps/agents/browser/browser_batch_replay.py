@@ -134,3 +134,48 @@ def is_readonly_template(steps) -> bool:
     """True if every step is a pure read/navigation (no clicks/types at all), the
     safest class of loop."""
     return all(s.get("action") in _READONLY_ACTIONS for s in steps)
+
+
+# A batch READ is useless if it doesn't hand the data back. We return each item's
+# read output, capped so a 20-item batch stays cheap, and stay honest about
+# failures (named, with the error) and truncation (named, never silently dropped).
+_MAX_ITEM_CHARS = 500
+_MAX_TOTAL_CHARS = 6000
+
+
+def summarize_batch(records: list[dict], readonly: bool,
+                    max_item_chars: int = _MAX_ITEM_CHARS,
+                    max_total_chars: int = _MAX_TOTAL_CHARS) -> str:
+    """Turn per-item batch results into the text the agent gets back.
+
+    `records`: [{value, ok, text}]. For a successful item `text` is its read
+    output (the data); for a failed one it's the error. Successes show their data
+    (capped); once the total budget is hit, remaining successes are listed by
+    value only (so nothing is silently lost); failures are always named with a
+    short reason so a partial batch never reads as 'all done'."""
+    done = [r for r in records if r.get("ok")]
+    failed = [r for r in records if not r.get("ok")]
+    verb = "Read" if readonly else "Completed"
+    lines, used, overflow = [], 0, []
+    for r in done:
+        body = " ".join(str(r.get("text") or "").split())[:max_item_chars]
+        line = f"- {r['value']}: {body}" if body else f"- {r['value']}: (done, no content)"
+        if used and used + len(line) > max_total_chars:
+            overflow.append(str(r["value"]))
+            continue
+        lines.append(line)
+        used += len(line)
+    out = f"{verb} {len(done)} of {len(records)}."
+    if lines:
+        out += "\n" + "\n".join(lines)
+    if overflow:
+        out += (f"\n(+{len(overflow)} more done but not shown to save space: "
+                f"{', '.join(overflow[:20])}; ask for specific ones if needed)")
+    if failed:
+        fails = ", ".join(
+            f"{r['value']} ({' '.join(str(r.get('text') or 'failed').split())[:60]})"
+            for r in failed[:20]
+        )
+        out += (f"\n{len(failed)} couldn't be done and need you to handle them "
+                f"individually: {fails}")
+    return out

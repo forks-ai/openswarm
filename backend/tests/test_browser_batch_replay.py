@@ -111,3 +111,51 @@ def test_fill_template_runs_every_step_per_value():
 def test_is_readonly_template():
     assert br.is_readonly_template([{"action": "navigate", "url": "u"}, {"action": "get_text"}])
     assert not br.is_readonly_template([{"action": "type", "selector": "#q", "text": "x"}])
+
+
+# --- the data return: batch-read must hand back what it read ----------------
+def test_summarize_returns_each_items_data():
+    recs = [
+        {"value": "ada", "ok": True, "text": "Ada Lovelace was a mathematician."},
+        {"value": "grace", "ok": True, "text": "Grace Hopper was a computer scientist."},
+    ]
+    out = br.summarize_batch(recs, readonly=True)
+    assert "Read 2 of 2." in out
+    assert "ada: Ada Lovelace was a mathematician." in out
+    assert "grace: Grace Hopper was a computer scientist." in out
+
+
+def test_summarize_is_honest_about_failures_with_reasons():
+    recs = [
+        {"value": "ada", "ok": True, "text": "data"},
+        {"value": "knuth", "ok": False, "text": "404 not found"},
+    ]
+    out = br.summarize_batch(recs, readonly=True)
+    assert "Read 1 of 2." in out
+    assert "knuth (404 not found)" in out
+    assert "handle them individually" in out
+
+
+def test_summarize_caps_each_item_and_total_without_silent_loss():
+    big = "x" * 2000
+    recs = [{"value": f"p{i}", "ok": True, "text": big} for i in range(30)]
+    out = br.summarize_batch(recs, readonly=True, max_item_chars=100, max_total_chars=500)
+    # each shown item is capped...
+    assert "x" * 101 not in out
+    # ...and the ones past the budget are NAMED as overflow, never silently dropped
+    assert "more done but not shown" in out
+    # every value is accounted for: shown bodies + overflow names cover all 30
+    shown = out.count("- p")
+    assert "+%d more" % (30 - shown) in out or "more done but not shown" in out
+
+
+def test_summarize_action_loop_uses_completed_verb():
+    recs = [{"value": "x", "ok": True, "text": "Clicked Save"}]
+    assert br.summarize_batch(recs, readonly=False).startswith("Completed 1 of 1.")
+    assert br.summarize_batch(recs, readonly=True).startswith("Read 1 of 1.")
+
+
+def test_summarize_handles_empty_content():
+    recs = [{"value": "x", "ok": True, "text": ""}]
+    out = br.summarize_batch(recs, readonly=True)
+    assert "x: (done, no content)" in out

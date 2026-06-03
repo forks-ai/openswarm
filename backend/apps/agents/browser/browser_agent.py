@@ -838,18 +838,23 @@ async def run_browser_agent(
                     elif not values:
                         bf_text = "No values to repeat; nothing to do."
                     else:
-                        done, failed = [], []
+                        records = []  # {value, ok, text} per item, for the data return
                         for val in values:
                             if cancel_event.is_set():
                                 break
                             item_ok = True
+                            item_text = ""
                             for tool_name, params in browser_batch_replay.fill_template(steps_tmpl, val):
                                 st = time.time()
                                 res = await _cancellable(execute_browser_tool(tool_name, params, browser_id, tab_id))
                                 if res is None:
-                                    item_ok = False; break
+                                    item_ok = False; item_text = "cancelled"; break
                                 el = int((time.time() - st) * 1000)
                                 step_ok = "error" not in res
+                                # carry each step's output; the LAST read step's text is
+                                # the data the agent wanted from this item.
+                                if step_ok and res.get("text"):
+                                    item_text = str(res["text"])
                                 action_log.append({
                                     "tool": tool_name, "input": params,
                                     "result_summary": str(res.get("text", res.get("error", "")))[:200],
@@ -863,12 +868,13 @@ async def run_browser_agent(
                                 if res.get("url"):
                                     last_seen_url = res["url"]
                                 if not step_ok:
-                                    item_ok = False; break
-                            (done if item_ok else failed).append(val)
-                        bf_text = f"Repeated the flow for {len(done)} of {len(values)}."
-                        if failed:
-                            bf_text += (f" These didn't match the template and need you to handle them "
-                                        f"individually: {', '.join(failed[:20])}.")
+                                    item_ok = False
+                                    item_text = str(res.get("error") or "did not match the template")
+                                    break
+                            records.append({"value": val, "ok": item_ok, "text": item_text})
+                        bf_text = browser_batch_replay.summarize_batch(
+                            records, browser_batch_replay.is_readonly_template(steps_tmpl),
+                        )
                     tool_results.append({"type": "tool_result", "tool_use_id": tu.id, "content": [{"type": "text", "text": bf_text}]})
                     result_msg = Message(role="tool_result", content={"text": bf_text, "tool_name": tu.name, "elapsed_ms": 0})
                     session.messages.append(result_msg)

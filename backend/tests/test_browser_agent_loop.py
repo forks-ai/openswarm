@@ -825,13 +825,25 @@ def test_batch_replay_runs_a_read_loop_for_all_values(monkeypatch):
         Resp([Blk("text", "Read all three.")], stop_reason="end_turn"),
     ])
     sent = _install(monkeypatch, primary, FakeAux())
+
+    async def _data(request_id, action, browser_id, params, tab_id=""):
+        sent.append({"action": action, "params": params})
+        if action == "evaluate":
+            # return value-specific data so we can prove the DATA comes back
+            who = params["expression"].split("'")[1]
+            return {"text": f"bio of {who}", "url": DOC_URL}
+        if action == "navigate":
+            return {"text": "Navigated", "url": params.get("url")}
+        return {"text": "ok", "url": DOC_URL}
+    monkeypatch.setattr(BA.ws_manager, "send_browser_command", _data, raising=False)
+
     asyncio.run(BA.run_browser_agent(task="read three profiles", browser_id="b1", model="sonnet", initial_url=DOC_URL))
     navs = [c for c in sent if c["action"] == "navigate" and "/in/" in c["params"].get("url", "")]
     assert {c["params"]["url"].split("/in/")[1] for c in navs} == {"ada", "grace", "alan"}, "navigated each value"
-    reads = {c["params"]["expression"] for c in sent if c["action"] == "evaluate"}
-    assert reads == {"read('ada')", "read('grace')", "read('alan')"}, "read each value, per-value"
     all_msgs = json.dumps([c["messages"] for c in primary.calls])
-    assert "Repeated the flow for 3 of 3" in all_msgs
+    assert "Read 3 of 3" in all_msgs
+    # Change #1: the actual per-item DATA is handed back, not just a count
+    assert "ada: bio of ada" in all_msgs and "grace: bio of grace" in all_msgs and "alan: bio of alan" in all_msgs
 
 
 def test_batch_replay_is_ghost_proof_when_an_item_does_not_match(monkeypatch):
@@ -858,8 +870,9 @@ def test_batch_replay_is_ghost_proof_when_an_item_does_not_match(monkeypatch):
 
     asyncio.run(BA.run_browser_agent(task="read three", browser_id="b1", model="sonnet", initial_url=DOC_URL))
     all_msgs = json.dumps([c["messages"] for c in primary.calls])
-    assert "Repeated the flow for 2 of 3" in all_msgs, "honest tally, not a ghost 'all done'"
+    assert "Read 2 of 3" in all_msgs, "honest tally, not a ghost 'all done'"
     assert "grace" in all_msgs, "the failed item is surfaced for manual handling"
+    assert "Page not found for grace" in all_msgs, "the failure REASON is reported, not hidden"
     # grace errored at navigate -> its read must NOT have run; ada+alan did
     reads = {c["params"]["expression"] for c in sent if c["action"] == "evaluate"}
     assert "read('grace')" not in reads, "the failed item must NOT proceed (no ghost)"
