@@ -318,11 +318,22 @@ async function getChildSessions(wv: BrowserWebview): Promise<ChildSession[]> {
   }
 }
 
+// Roles whose name is useful as disambiguating context for a nearby control
+// (the person's name above a "Message" button, the section heading of a form).
+const _CONTEXT_ROLES = new Set(['heading', 'statictext', 'link']);
+const _CONTEXT_MAX_CHARS = 60;
+const _CONTEXT_LOOKBACK = 30;
+
 function axNodesToCandidates(nodes: any[], sessionId?: string): RankItem[] {
   const byId = new Map<string, any>();
   const parentOf = new Map<string, string>();
-  for (const node of nodes) {
-    if (node.nodeId != null) byId.set(String(node.nodeId), node);
+  const orderOf = new Map<string, number>();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.nodeId != null) {
+      byId.set(String(node.nodeId), node);
+      orderOf.set(String(node.nodeId), i);
+    }
   }
   for (const node of nodes) {
     for (const c of node.childIds || []) parentOf.set(String(c), String(node.nodeId));
@@ -330,6 +341,33 @@ function axNodesToCandidates(nodes: any[], sessionId?: string): RankItem[] {
   const isCandidate = (n: any): boolean => {
     if (!n || n.ignored || n.backendDOMNodeId == null) return false;
     return INTERACTIVE_ROLES.has(extractAxValue(n.role));
+  };
+  // Which card/section does this control sit in? Nearest named non-interactive
+  // ancestor wins (a listitem's name aggregates its card text); else the nearest
+  // preceding heading/text/link in document order (browser-use's trick). This is
+  // what tells "Message" for Tyler apart from "Message" for everyone else.
+  const contextOf = (node: any, ownName: string): string => {
+    let p = parentOf.get(String(node.nodeId));
+    for (let hops = 0; p && hops < 12; hops++) {
+      const anc = byId.get(p);
+      if (anc && !anc.ignored && !isCandidate(anc)) {
+        const ancName = extractAxValue(anc.name).trim();
+        if (ancName && ancName !== ownName) return ancName.slice(0, _CONTEXT_MAX_CHARS);
+      }
+      p = parentOf.get(p);
+    }
+    const pos = orderOf.get(String(node.nodeId));
+    if (pos == null) return '';
+    for (let i = pos - 1; i >= 0 && i >= pos - _CONTEXT_LOOKBACK; i--) {
+      const prev = nodes[i];
+      if (!prev || prev.ignored) continue;
+      if (!_CONTEXT_ROLES.has(extractAxValue(prev.role).toLowerCase())) continue;
+      const prevName = extractAxValue(prev.name).trim();
+      if (prevName && prevName !== ownName && prevName.length >= 3) {
+        return prevName.slice(0, _CONTEXT_MAX_CHARS);
+      }
+    }
+    return '';
   };
   // A same-named interactive ancestor owns this hit target (a link inside a
   // button, an icon twin inside its labeled wrapper); listing both just gives
@@ -356,7 +394,7 @@ function axNodesToCandidates(nodes: any[], sessionId?: string): RankItem[] {
     if (backendNodeId == null) continue;
     const shortName = name.slice(0, 80);
     if (twinOfAncestor(node, shortName)) continue;
-    out.push({ role, name: shortName, backendNodeId, sessionId });
+    out.push({ role, name: shortName, backendNodeId, sessionId, context: contextOf(node, name) });
   }
   return out;
 }
@@ -652,30 +690,46 @@ async function handleListInteractives(wv: BrowserWebview, params: Record<string,
   const { shown: ranked, truncated } = rankAndCapInteractives(candidates, { goal });
   const { kept: shown, dropped: covered } = await dropCoveredElements(wv, ranked);
 
-  // Mark elements that weren't in the PREVIOUS list: after a click that opened
-  // a dialog or menu, the * rows are almost always the ones that matter.
+  // The previous look's cache feeds two things: * markers for brand-new
+  // elements, and STABLE indices so the same element keeps the same number
+  // across looks (the model can act on a remembered index without re-reading
+  // the whole list, browser-use's stable-hash trick on our node ids).
   let prevIds: Set<string> | null = null;
+  const prevIndexByKey = new Map<string, number>();
   try {
     const cacheBridge = (window as any).openswarm?.cdpCacheGet;
     const prev = cacheBridge ? await cacheBridge(wv.getWebContentsId()) : null;
     if (prev && typeof prev === 'object') {
-      prevIds = new Set(
-        Object.values(prev).map((e: any) =>
-          `${(typeof e === 'object' && e?.sessionId) || ''}:${typeof e === 'number' ? e : e?.backendNodeId}`),
-      );
+      for (const [idxStr, e] of Object.entries(prev)) {
+        const key = `${(typeof e === 'object' && (e as any)?.sessionId) || ''}:${typeof e === 'number' ? e : (e as any)?.backendNodeId}`;
+        prevIndexByKey.set(key, Number(idxStr));
+      }
+      prevIds = new Set(prevIndexByKey.keys());
     }
-  } catch { /* no previous list; nothing gets a marker */ }
-  const isNew = (el: RankItem) =>
-    !!prevIds && prevIds.size > 0 && !prevIds.has(`${el.sessionId || ''}:${el.backendNodeId}`);
+  } catch { /* no previous list; fresh numbering, no markers */ }
+  const keyOf = (el: RankItem) => `${el.sessionId || ''}:${el.backendNodeId}`;
+  const isNew = (el: RankItem) => !!prevIds && prevIds.size > 0 && !prevIds.has(keyOf(el));
 
-  const interactives: (InteractiveElement & { isNew: boolean })[] = shown.map((el, i) => ({
-    index: i + 1,
-    role: el.role,
-    name: el.name,
-    backendNodeId: el.backendNodeId,
-    sessionId: el.sessionId,
-    isNew: isNew(el),
-  }));
+  // Sticky only while some elements carried over; full turnover (a navigation,
+  // node ids all changed) or runaway numbering restarts cleanly at 1.
+  const matchedPrev = shown.filter((el) => prevIndexByKey.has(keyOf(el))).length;
+  let nextFree = prevIndexByKey.size > 0 ? Math.max(...prevIndexByKey.values()) + 1 : 1;
+  const sticky = matchedPrev > 0 && nextFree + shown.length < 1000;
+  const used = new Set<number>();
+  const interactives: (InteractiveElement & { isNew: boolean; context?: string })[] = shown.map((el, i) => {
+    let index = sticky ? prevIndexByKey.get(keyOf(el)) : undefined;
+    if (index == null || used.has(index)) index = sticky ? nextFree++ : i + 1;
+    used.add(index);
+    return {
+      index,
+      role: el.role,
+      name: el.name,
+      backendNodeId: el.backendNodeId,
+      sessionId: el.sessionId,
+      isNew: isNew(el),
+      context: el.context,
+    };
+  });
 
   // Cache in main-process so click_index can resolve across separate WS commands.
   // role+name ride along so click_index can report WHAT it clicked (the agent
@@ -691,14 +745,23 @@ async function handleListInteractives(wv: BrowserWebview, params: Record<string,
     // best-effort; click_index falls back to re-listing.
   }
 
-  const lines = interactives.map(
-    (el) => `[${el.index}]${el.isNew ? '*' : ''}<${el.role} "${el.name}">`,
-  );
+  // ctx only where it disambiguates: rows whose role+name appear more than
+  // once (eight "Message" buttons). Unique rows skip it to keep tokens lean.
+  const nameCounts = new Map<string, number>();
+  for (const el of interactives) {
+    const k = `${el.role}|${el.name}`;
+    nameCounts.set(k, (nameCounts.get(k) || 0) + 1);
+  }
+  const lines = interactives.map((el) => {
+    const dup = (nameCounts.get(`${el.role}|${el.name}`) || 0) > 1;
+    const ctx = dup && el.context ? ` ctx="${el.context}"` : '';
+    return `[${el.index}]${el.isNew ? '*' : ''}<${el.role} "${el.name}"${ctx}>`;
+  });
   let text: string;
   if (lines.length === 0) {
     text = 'No interactive elements found on this page.';
   } else {
-    text = `${lines.length} interactive elements (* = appeared since your last look):\n${lines.join('\n')}`;
+    text = `${lines.length} interactive elements (* = new since your last look; same number = same element as before):\n${lines.join('\n')}`;
     if (truncated > 0) {
       text += `\n... ${truncated} more not shown; scroll or scope with BrowserGetElements to reach them.`;
     }

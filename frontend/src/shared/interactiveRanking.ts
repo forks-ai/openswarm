@@ -13,6 +13,9 @@ export interface RankItem {
   // Present when the element lives in a cross-origin (OOPIF) child frame; the
   // CDP session to address it through. Ranking ignores it, just carries it.
   sessionId?: string;
+  // Nearby text that disambiguates same-named twins (the card/section this
+  // element sits in, e.g. which "Message" button belongs to which person).
+  context?: string;
 }
 
 // Lower number = higher priority. Inputs the user types into first, then
@@ -37,11 +40,14 @@ function rolePriority(role: string): number {
 // buttons interleaved with product text) is never collapsed. The sessionId is
 // part of the key so a same-named element in a cross-origin child frame is
 // never mistaken for a twin of the root frame's last element at the seam.
+// Context too: five "Message" buttons in five people-cards are NOT twins,
+// only same-card icon+label pairs (identical context) collapse.
 function dedupeConsecutive(items: RankItem[]): RankItem[] {
   const out: RankItem[] = [];
   for (const it of items) {
     const prev = out[out.length - 1];
-    if (prev && prev.role === it.role && prev.name === it.name && prev.sessionId === it.sessionId) continue;
+    if (prev && prev.role === it.role && prev.name === it.name
+        && prev.sessionId === it.sessionId && (prev.context || '') === (it.context || '')) continue;
     out.push(it);
   }
   return out;
