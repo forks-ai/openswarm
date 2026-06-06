@@ -105,6 +105,54 @@ def template_safety(steps) -> tuple[bool, str]:
     return True, ""
 
 
+# Like _SEND_NAME_RE minus composer-openers ("Message"/"DM" buttons open a
+# compose box, they don't send), so routine flows still batch freely.
+_LIVE_IRREVERSIBLE_RE = re.compile(
+    r"\b(send|submit|post|publish|connect|invite|follow|like|react|comment|reply|"
+    r"share|pay|buy|order|checkout|purchase|place\s*order|book|"
+    r"confirm|apply|accept|decline|delete|remove|unsend|withdraw|endorse)\b",
+    re.I,
+)
+
+
+def live_batch_guard(actions, seen_lines) -> str:
+    """Reason string if a live BrowserBatch carries an irreversible step, else ''.
+
+    The solo-send rule was prompt-only until now; this makes it physical. A
+    click_index resolves to its element line from the last attached state (an
+    unresolvable index passes: it fails at execution anyway), and Enter after
+    typing into a composer counts as the send it is."""
+    typed_composer = False
+    for i, a in enumerate(actions or []):
+        if not isinstance(a, dict):
+            continue
+        typ = a.get("type")
+        params = a.get("params") if isinstance(a.get("params"), dict) else {}
+        label = ""
+        if typ == "click_index":
+            prefix = f"[{params.get('index')}]"
+            label = next((l for l in (seen_lines or ()) if str(l).startswith(prefix)), "")
+        elif typ == "click":
+            label = str(params.get("selector") or "")
+        elif typ == "type":
+            if _COMPOSE_SEL_RE.search(str(params.get("selector") or "")):
+                typed_composer = True
+            continue
+        elif typ == "press_key":
+            if typed_composer and str(params.get("key") or "").strip().lower() in ("enter", "return"):
+                return (f"sub-action {i+1} presses Enter after typing into a message "
+                        "composer, which sends it")
+            continue
+        else:
+            continue
+        # selectors hide words behind underscores/dashes (msg-form__send-button),
+        # which defeat \b; flatten separators so the word check still sees them
+        if label and _LIVE_IRREVERSIBLE_RE.search(re.sub(r"[_\-./#\[\]]+", " ", label)):
+            return (f"sub-action {i+1} ({typ}) targets {label.strip()!r}, "
+                    "which is irreversible/outward-facing")
+    return ""
+
+
 def _sub(val, value: str):
     return value if val == PLACEHOLDER else (
         val.replace(PLACEHOLDER, value) if isinstance(val, str) else val

@@ -772,6 +772,7 @@ async def run_browser_agent(
     fresh_state_pending = False
     multi_action_turns = 0
     batch_calls = 0
+    batch_guard_blocks = 0
     try:
         for turn in range(MAX_TURNS):
             if cancel_event.is_set():
@@ -1241,7 +1242,23 @@ async def run_browser_agent(
                 async def _wait_exec(tool, params, bid, tid):
                     return await _cancellable(execute_browser_tool(tool, params, bid, tid))
 
-                if tu.name == "BrowserWait":
+                # Hard send-guard: an irreversible step physically cannot ride in a
+                # batch (the solo-send rule was prompt-only before; prompts drift).
+                _guard_why = (browser_batch_replay.live_batch_guard(
+                    (tool_input or {}).get("actions"), attached_state_seen)
+                    if tu.name == "BrowserBatch" else "")
+                if _guard_why:
+                    batch_guard_blocks += 1
+                    logger.info(
+                        f"[browser-batch-guard {session_id}] blocked batch at turn {turn}: {_guard_why}"
+                    )
+                    result = {"error": (
+                        f"BATCH BLOCKED, nothing was executed: {_guard_why}. Irreversible "
+                        "steps (Send/Submit/Pay/Post/Connect class) never ride in a batch: "
+                        "do that step SOLO with BrowserClickIndex + `expect` proof, and "
+                        "batch only the routine steps around it."
+                    )}
+                elif tu.name == "BrowserWait":
                     # Smart wait: return as soon as the page is ready (target or DOM
                     # settle), not on a blind timer (the audit's 42%-of-time hog).
                     result = await browser_wait.smart_wait(
@@ -1578,7 +1595,8 @@ async def run_browser_agent(
         logger.info(
             f"[browser-batching {session_id}] run summary: turns={turn + 1} "
             f"multi_action_turns={multi_action_turns} batch_calls={batch_calls} "
-            f"nudges={batching_nudges} redundant_reads={redundant_read_nudges}"
+            f"nudges={batching_nudges} redundant_reads={redundant_read_nudges} "
+            f"guard_blocks={batch_guard_blocks}"
         )
         browser_metrics.record_task(session_id, browser_id, task, final_status,
                                     metrics_started_at, turn + 1, action_log, session.tokens,

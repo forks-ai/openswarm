@@ -159,3 +159,58 @@ def test_summarize_handles_empty_content():
     recs = [{"value": "x", "ok": True, "text": ""}]
     out = br.summarize_batch(recs, readonly=True)
     assert "x: (done, no content)" in out
+
+
+# --- live batch send-guard ----------------------------------------------------
+SEEN = {
+    '[4] button "Send"',
+    '[41] link "Next page"',
+    '[7] button "Message"',
+    '[12] button "Connect"',
+}
+
+
+def _click_idx(i):
+    return {"type": "click_index", "params": {"index": i}}
+
+
+def test_guard_blocks_send_click_index_resolved_from_state():
+    why = br.live_batch_guard([_click_idx(4)], SEEN)
+    assert "irreversible" in why and "Send" in why
+
+
+def test_guard_blocks_connect_but_allows_message_composer_opener():
+    assert br.live_batch_guard([_click_idx(12)], SEEN) != ""
+    assert br.live_batch_guard([_click_idx(7)], SEEN) == ""
+
+
+def test_guard_index_prefix_does_not_collide():
+    # [4] is "Send" but [41] is "Next page"; clicking 41 must pass
+    assert br.live_batch_guard([_click_idx(41)], SEEN) == ""
+
+
+def test_guard_allows_unresolvable_index_and_garbage():
+    assert br.live_batch_guard([_click_idx(99)], SEEN) == ""
+    assert br.live_batch_guard([{"type": "click_index"}, "junk", None], SEEN) == ""
+    assert br.live_batch_guard(None, set()) == ""
+
+
+def test_guard_blocks_send_shaped_click_selector():
+    why = br.live_batch_guard(
+        [{"type": "click", "params": {"selector": "button.msg-form__send-button"}}], set())
+    assert "irreversible" in why
+
+
+def test_guard_blocks_enter_after_typing_into_composer():
+    why = br.live_batch_guard([
+        {"type": "type", "params": {"selector": "div.msg-form__contenteditable", "text": "hi"}},
+        {"type": "press_key", "params": {"key": "Enter"}},
+    ], set())
+    assert "composer" in why
+
+
+def test_guard_allows_search_type_then_enter():
+    assert br.live_batch_guard([
+        {"type": "type", "params": {"selector": "input.search-global-typeahead__input", "text": "q"}},
+        {"type": "press_key", "params": {"key": "Enter"}},
+    ], set()) == ""
