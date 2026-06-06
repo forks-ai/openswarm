@@ -963,8 +963,8 @@ async def run_browser_agent(
                         browser_history.set_domain_note(note_domain, working_mem)
                     brain_text = (
                         f"📋 **Plan**\n"
-                        f"_Previous_: {eval_prev}\n"
-                        f"_Memory_: {working_mem}\n"
+                        + (f"_Previous_: {eval_prev}\n" if eval_prev else "")
+                        + f"_Memory_: {working_mem}\n"
                         f"_Next_: {next_goal}"
                     )
                     brain_msg = Message(role="assistant", content=brain_text)

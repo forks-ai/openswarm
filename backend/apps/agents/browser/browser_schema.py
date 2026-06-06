@@ -44,8 +44,9 @@ BROWSER_TOOLS_SCHEMA = [
                 "evaluation_previous": {
                     "type": "string",
                     "description": (
-                        "What did the previous action(s) accomplish? Did they succeed? "
-                        "If not, why? Be specific about what changed on the page."
+                        "OPTIONAL. Only when the previous action SURPRISED you (failed, "
+                        "landed somewhere unexpected): say what happened and why, briefly. "
+                        "Omit entirely when the attached page state already shows the outcome."
                     ),
                 },
                 "working_memory": {
@@ -64,7 +65,7 @@ BROWSER_TOOLS_SCHEMA = [
                     ),
                 },
             },
-            "required": ["evaluation_previous", "working_memory", "next_goal"],
+            "required": ["working_memory", "next_goal"],
         },
     },
     {
@@ -609,12 +610,13 @@ SYSTEM_PROMPT = (
     "## Required output structure: ReportProgress before every action\n"
     "Before ANY action tool (BrowserBatch, BrowserClickIndex, BrowserEvaluate), "
     "you MUST call the ReportProgress tool in the SAME turn. "
-    "ReportProgress takes three short fields:\n"
-    "- evaluation_previous: did your last action work? what changed on the page?\n"
+    "ReportProgress takes these short fields:\n"
+    "- evaluation_previous (OPTIONAL): include ONLY when the last action surprised you "
+    "(failed, wrong page); when the attached page state already tells the story, omit it.\n"
     "- working_memory: what have you learned about this site? what worked, what didn't?\n"
     "- next_goal: what specifically are you trying to do with the next action?\n"
-    "After your first planning turn, keep all three fields TELEGRAPHIC, a few words each, "
-    "not sentences (e.g. evaluation_previous: 'results loaded'; next_goal: 'click result 1'). "
+    "After your first planning turn, keep every field TELEGRAPHIC, a few words each, "
+    "not sentences (e.g. next_goal: 'click result 1'). "
     "Terse means fewer WORDS, never fewer FACTS: always keep the one detail the next step "
     "needs (the exact selector, index, or value). Each token you write is generated one at a "
     "time and is the main thing that slows a turn, so write the fewest that still carry the "
