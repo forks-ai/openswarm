@@ -477,6 +477,8 @@ async def run_browser_agent(
     auto_scanned_urls: set[str] = set()
     auto_scan_count = 0
     llm_ms_total = 0
+    out_tokens_total = 0  # sum of per-turn output tokens (the latency driver)
+    narration_turns = 0   # turns that emitted redundant prose next to an action
 
     async def _scan_results(scan_for: str) -> tuple[str, int]:
         """Aux-model read of the current results page scored against the task.
@@ -889,6 +891,7 @@ async def run_browser_agent(
             if hasattr(response, 'usage') and response.usage:
                 _out = response.usage.output_tokens or 0
                 _in = response.usage.input_tokens or 0
+                out_tokens_total += _out
                 session.tokens["input"] = session.tokens.get("input", 0) + _in
                 session.tokens["output"] = session.tokens.get("output", 0) + _out
                 _cr = getattr(response.usage, "cache_read_input_tokens", 0) or 0
@@ -916,6 +919,14 @@ async def run_browser_agent(
                         "name": block.name,
                         "input": block.input,
                     })
+
+            # think-shorter telemetry: a turn that emits BOTH prose and an action
+            # tool is the redundant narration the prompt now forbids; count it so
+            # the bench can verify the prose actually went away.
+            if any(t.strip() for t in text_parts) and any(
+                tu.name in _ACTION_TOOLS_REQUIRING_REPORT for tu in tool_uses
+            ):
+                narration_turns += 1
 
             if text_parts:
                 asst_msg = Message(
@@ -1740,6 +1751,11 @@ async def run_browser_agent(
             f"[browser-time {session_id}] wall={_wall_ms}ms llm={llm_ms_total}ms "
             f"tools={_tools_ms_total}ms other={max(0, _wall_ms - llm_ms_total - _tools_ms_total)}ms "
             f"auto_scans={auto_scan_count} hint_steps={len(route_hint_keys)}"
+        )
+        _nt = turn + 1
+        logger.info(
+            f"[browser-output {session_id}] out_tokens={out_tokens_total} "
+            f"mean_out_per_turn={out_tokens_total // max(1, _nt)} narration_turns={narration_turns}/{_nt}"
         )
         browser_metrics.record_task(session_id, browser_id, task, final_status,
                                     metrics_started_at, turn + 1, action_log, session.tokens,
