@@ -409,9 +409,10 @@ BROWSER_TOOLS_SCHEMA = [
                     "type": "string",
                     "description": (
                         "Optional. A specific button label, visible text, or CSS selector "
-                        "you expect to appear (e.g. 'Haik Decie', 'Write a message', "
-                        "'button[type=submit]'). The wait ends the moment it's present and "
-                        "visible. Be specific, not a generic word like 'Message'."
+                        "you expect to appear (e.g. the person's name you searched, a "
+                        "placeholder like 'Write a message', or 'button[type=submit]'). The "
+                        "wait ends the moment it's present and visible. Be specific, not a "
+                        "generic word like 'Message'."
                     ),
                 },
             },
@@ -795,8 +796,9 @@ SYSTEM_PROMPT = (
     "line: 'OUTCOME: DONE - <the verifiable result>' or 'OUTCOME: NOT DONE - <what is "
     "missing and why>'. The parent agent decides whether to re-dispatch another browser "
     "from that line alone, so a vague or missing outcome line costs a whole redundant "
-    "agent run. For irreversible actions, DONE requires the proof you observed "
-    "(e.g. 'message visible in thread at 9:31 PM'). Keep the rest of the summary brief."
+    "agent run. For irreversible actions, DONE requires the proof you observed: the exact "
+    "thing now on the page that confirms it, and where or when you saw it. Keep the rest "
+    "of the summary brief."
 )
 
 MAX_TURNS = 40

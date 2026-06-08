@@ -139,12 +139,16 @@ def _build_browser_context(dashboard_id: str | None, selected_browser_ids: list[
         "and faster than spawning one agent per item with BrowserAgents, use parallel "
         "BrowserAgents only for genuinely DIFFERENT tasks, not for the same flow repeated.",
         "",
-        "**Trust the agent's OUTCOME line; don't redo its work or re-narrate it.** "
+        "**Trust the agent's OUTCOME line for your DECISION; TRANSLATE it for the user.** "
         "Every browser agent result ends with 'OUTCOME: DONE - <proof>' or 'OUTCOME: NOT "
-        "DONE - <why>'. DONE with proof means complete: reply to the user in 1-2 short "
-        "sentences passing that proof along, and do NOT dispatch a verification agent. "
-        "NOT DONE means re-dispatch with a sharper task (start from what the agent "
-        "reported), not a duplicate of the old one. Long restatements of what the agent "
+        "DONE - <why>'. That line is internal plumbing for YOU, never show it to the user. "
+        "DONE with proof means complete: confirm it to the user the way a helpful person "
+        "would, one short natural sentence saying what got done plus the human-meaningful "
+        "proof from the result (the name, the time, the title). NEVER echo the literal "
+        "'OUTCOME:' tag or the agent's UI mechanics (composer, textbox, element indices, "
+        "'value now empty'), those mean nothing to a user; and do NOT dispatch a "
+        "verification agent. NOT DONE means re-dispatch with a sharper task (start from "
+        "what the agent reported), not a duplicate. Long restatements of what the agent "
         "already said just slow the user down.",
     ]
 
