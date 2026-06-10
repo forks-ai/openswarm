@@ -680,6 +680,7 @@ const agentsSlice = createSlice({
           (m) => m.client_message_id === incoming.client_message_id && m.optimistic_status === 'pending',
         );
         if (optIdx >= 0) {
+          console.warn(`[ux-trace] ws-echo-merge sid=${action.payload.sessionId.slice(0, 8)} cmid=${incoming.client_message_id?.slice(-6)}`);
           session.messages[optIdx] = { ...incoming, optimistic_status: undefined };
           return;
         }
@@ -708,6 +709,7 @@ const agentsSlice = createSlice({
     ) {
       const { sessionId, clientMessageId, prompt, contextPaths, forcedTools, attachedSkills, images, hidden } = action.payload;
       const session = state.sessions[sessionId];
+      console.warn(`[ux-trace] optimistic-add sid=${sessionId.slice(0, 8)} cmid=${clientMessageId.slice(-6)} sessionInStore=${!!session} hidden=${!!hidden} status=${session?.status}`);
       if (!session) return;
       // Hidden messages (e.g. internal continuation prompts) skip the optimistic bubble.
       if (hidden) return;
@@ -1273,11 +1275,19 @@ const agentsSlice = createSlice({
             !incomingIds.has(m.id) &&
             !(m.client_message_id && incomingClientIds.has(m.client_message_id)),
         );
+        // Place survivors by timestamp, not blindly at the end: when the snapshot
+        // already carries the agent's reply, appending the just-sent user bubble
+        // rendered the OUTPUT above the INPUT. Insert before the first incoming
+        // message that is newer.
+        const mergedMessages = surviving.length ? [...incomingMsgs] : incomingMsgs;
+        for (const m of surviving) {
+          const at = mergedMessages.findIndex((x) => (x.timestamp || '') > (m.timestamp || ''));
+          if (at === -1) mergedMessages.push(m);
+          else mergedMessages.splice(at, 0, m);
+        }
         state.sessions[session.id] = {
           ...session,
-          messages: surviving.length
-            ? [...incomingMsgs, ...surviving]
-            : incomingMsgs,
+          messages: mergedMessages,
           pending_approvals: session.pending_approvals ?? existing?.pending_approvals ?? [],
           tool_group_meta: session.tool_group_meta ?? existing?.tool_group_meta ?? {},
           // mcp_suggestions live in client state only (the backend never
