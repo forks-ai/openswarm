@@ -812,6 +812,7 @@ class WebSocketManager {
   }
 
   stopAgent(sessionId: string) {
+    console.warn(`[ux-trace] STOP-SENT sid=${sessionId.slice(0, 8)}\n${new Error().stack}`);
     this.send('agent:stop', { session_id: sessionId });
   }
 
@@ -854,6 +855,35 @@ const _sessionLastSeq: Map<string, number> = new Map();
 
 export function createSessionWs(sessionId: string): WebSocketManager {
   return new WebSocketManager(`${WS_BASE}/ws/agents/${sessionId}`, { sessionId });
+}
+
+// One backgrounded session socket, kept alive across a hop so an active agent's
+// stream doesn't pay a reconnect+resume handshake on reopen (the "Locking-in"
+// lag). Bounded to ONE: opening any other chat tears the previous one down, so
+// at most a single detached socket lingers, still pumping events into Redux.
+let _backgroundedSessionWs: { sessionId: string; ws: WebSocketManager } | null = null;
+
+export function acquireSessionWs(sessionId: string): WebSocketManager {
+  if (_backgroundedSessionWs?.sessionId === sessionId) {
+    const ws = _backgroundedSessionWs.ws;
+    _backgroundedSessionWs = null;
+    return ws;
+  }
+  return new WebSocketManager(`${WS_BASE}/ws/agents/${sessionId}`, { sessionId });
+}
+
+export function releaseSessionWs(sessionId: string, ws: WebSocketManager, keepAlive: boolean): void {
+  // Never keep more than one detached socket around.
+  if (_backgroundedSessionWs && _backgroundedSessionWs.sessionId !== sessionId) {
+    _backgroundedSessionWs.ws.disconnect();
+    _backgroundedSessionWs = null;
+  }
+  if (keepAlive) {
+    _backgroundedSessionWs = { sessionId, ws };
+  } else {
+    ws.disconnect();
+    if (_backgroundedSessionWs?.sessionId === sessionId) _backgroundedSessionWs = null;
+  }
 }
 
 export default WebSocketManager;

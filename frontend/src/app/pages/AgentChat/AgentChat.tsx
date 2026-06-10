@@ -41,7 +41,7 @@ import {
 } from '@/shared/state/agentsSlice';
 import { store } from '@/shared/state/store';
 import { fetchModes } from '@/shared/state/modesSlice';
-import { createSessionWs } from '@/shared/ws/WebSocketManager';
+import { createSessionWs, acquireSessionWs, releaseSessionWs } from '@/shared/ws/WebSocketManager';
 import StreamingBubble from './bubbles/StreamingBubble';
 import MessageBubble from './bubbles/MessageBubble';
 import CompactionMarker from './bubbles/CompactionMarker';
@@ -207,6 +207,8 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
   const [model, setModel] = useState('sonnet');
 
   const wsRef = useRef<ReturnType<typeof createSessionWs> | null>(null);
+  // Current status for the WS-cleanup closure (effect deps can't include it).
+  const statusRef = useRef<string | undefined>(undefined);
   const initialContextApplied = useRef(false);
   const messageQueueRef = useRef<QueuedMessage[]>([]);
   const [queueLength, setQueueLength] = useState(0);
@@ -249,13 +251,20 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
         }
       }
       if (cancelled) return;
-      ws = createSessionWs(id);
+      // acquireSessionWs reuses a still-open socket kept alive from the last hop,
+      // so an active agent's stream resumes with no reconnect handshake. connect()
+      // is a no-op when the reused socket is already open.
+      ws = acquireSessionWs(id);
       ws.connect();
       wsRef.current = ws;
     })();
     return () => {
       cancelled = true;
-      if (ws) ws.disconnect();
+      if (ws) {
+        const st = statusRef.current;
+        const active = st === 'running' || st === 'waiting_approval';
+        releaseSessionWs(id, ws, active);
+      }
       wsRef.current = null;
     };
   }, [id, isDraft, dispatch]);
@@ -312,6 +321,8 @@ const AgentChat: React.FC<AgentChatProps> = ({ sessionId: sessionIdProp, onClose
         });
     }
   }, [id, isDraft, mode, model, session?.system_prompt, session?.target_directory, dispatch]);
+
+  statusRef.current = session?.status;
 
   const agentBusy = awaitingResponse || (!isDraft && (session?.status === 'running' || session?.status === 'waiting_approval'));
 
